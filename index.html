@@ -209,12 +209,18 @@ main{max-width:640px;margin:0 auto;padding:0 16px}
 
 <script>
 // ====== CONFIGURAZIONE FIREBASE (incolla qui la tua) ======
+
 const firebaseConfig = {
-  apiKey: "INCOLLA_QUI",
-  authDomain: "INCOLLA_QUI.firebaseapp.com",
-  databaseURL: "https://INCOLLA_QUI-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "INCOLLA_QUI"
+  apiKey: "AIzaSyBo8fxDiw4_gVttH18ZHVu_DIHXOYhgqyk",
+  authDomain: "farmaci-nonna-f8bfb.firebaseapp.com",
+  databaseURL: "https://farmaci-nonna-f8bfb-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "farmaci-nonna-f8bfb",
+  storageBucket: "farmaci-nonna-f8bfb.firebasestorage.app",
+  messagingSenderId: "849579733603",
+  appId: "1:849579733603:web:5d270c4d660c16a7167e56",
+  measurementId: "G-2ZKYBJ1LT6"
 };
+  
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const ROOT = db.ref('nonna');
