@@ -195,7 +195,7 @@ main{max-width:640px;margin:0 auto;padding:0 16px}
 #splash.via{opacity:0;visibility:hidden}
 .icona{width:108px;height:108px;border-radius:24px;background:linear-gradient(160deg,#5EE4A0,#1FB5A8);display:flex;align-items:center;justify-content:center;box-shadow:0 12px 32px rgba(31,181,168,.35)}
 #splash .icona{animation:entra .7s cubic-bezier(.2,.9,.25,1.15) both}
-.sp-nome{font-size:24px;font-weight:700;letter-spacing:.005em;animation:compari .6s .25s both}
+.sp-nome{font-size:26px;text-align:center;padding:0 24px;font-weight:700;letter-spacing:.005em;animation:compari .6s .25s both}
 .sp-sotto{font-size:15px;color:var(--label2);margin-top:-10px;animation:compari .6s .35s both}
 .spinner{position:absolute;bottom:calc(env(safe-area-inset-bottom,0px) + 70px);color:var(--label2);animation:gira .9s steps(8) infinite}
 @keyframes entra{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}
@@ -224,10 +224,17 @@ main{max-width:640px;margin:0 auto;padding:0 16px}
 
 <div id="splash" aria-hidden="true">
   <div class="icona"><svg width="58" height="58" viewBox="0 0 24 24"><g transform="rotate(-45 12 12)"><path d="M12 8H6.5a4 4 0 000 8H12z" fill="#fff"/><path d="M12 8h5.5a4 4 0 010 8H12z" fill="#fff" fill-opacity=".6"/></g></svg></div>
-  <div class="sp-nome">Farmaci Nonna</div>
-  <div class="sp-sotto">Le cure della nonna, insieme</div>
+  <div class="sp-nome" id="spNome">Farmaci Nonna</div>
+  <div class="sp-sotto" id="spSotto">Le cure della nonna, insieme</div>
   <svg class="spinner" width="28" height="28" viewBox="0 0 26 26"><rect x="11.8" y="1.5" width="2.4" height="7" rx="1.2" fill="currentColor" opacity="1.00" transform="rotate(0 13 13)"/><rect x="11.8" y="1.5" width="2.4" height="7" rx="1.2" fill="currentColor" opacity="0.89" transform="rotate(-45 13 13)"/><rect x="11.8" y="1.5" width="2.4" height="7" rx="1.2" fill="currentColor" opacity="0.78" transform="rotate(-90 13 13)"/><rect x="11.8" y="1.5" width="2.4" height="7" rx="1.2" fill="currentColor" opacity="0.67" transform="rotate(-135 13 13)"/><rect x="11.8" y="1.5" width="2.4" height="7" rx="1.2" fill="currentColor" opacity="0.56" transform="rotate(-180 13 13)"/><rect x="11.8" y="1.5" width="2.4" height="7" rx="1.2" fill="currentColor" opacity="0.45" transform="rotate(-225 13 13)"/><rect x="11.8" y="1.5" width="2.4" height="7" rx="1.2" fill="currentColor" opacity="0.34" transform="rotate(-270 13 13)"/><rect x="11.8" y="1.5" width="2.4" height="7" rx="1.2" fill="currentColor" opacity="0.23" transform="rotate(-315 13 13)"/></svg>
 </div>
+<script>
+function testoSaluto(n){
+  const h = new Date().getHours();
+  return (h<5 ? 'Buonanotte' : h<13 ? 'Buongiorno' : h<18 ? 'Buon pomeriggio' : 'Buonasera') + ', ' + n;
+}
+try { const n = localStorage.getItem('chi'); if (n){ document.getElementById('spNome').textContent = testoSaluto(n); document.getElementById('spSotto').textContent = 'Farmaci Nonna'; } } catch(e){}
+</script>
 <div id="benvenuto" role="dialog" aria-modal="true"></div>
 
 <div class="topbar" id="topbar">
@@ -327,7 +334,7 @@ ROOT.child('setup/persone').transaction(v => v ? undefined : true, (err, ok) => 
   ['Mariagrazia','Marco','Paolo','Paola','Sara'].forEach((n,i) => upd[ROOT.child('persone').push().key] = {nome:n, ts:t+i});
   ROOT.child('persone').update(upd);
 });
-setTimeout(() => provaChiudiSplash(true), 5000);
+setTimeout(() => provaChiudiSplash(true), 6000);
 ROOT.child('note').on('value', s => { note = s.val() || {}; render(); });
 function ascoltaGiorno(){
   if (sommRef) sommRef.off();
@@ -578,7 +585,7 @@ function nav(titolo, sx, dx){
 // ====== SPLASH ======
 function provaChiudiSplash(forza){
   if (!forza && !(farmaciCaricati && personeCaricate)) return;
-  const attesa = Math.max(0, 1200 - (Date.now() - AVVIO));
+  const attesa = Math.max(0, 2800 - (Date.now() - AVVIO));
   setTimeout(() => {
     const sp = document.getElementById('splash');
     if (sp.classList.contains('via')) return;
@@ -631,9 +638,20 @@ function aggiornaNomiUI(){
   if (window._sheetNomi) disegnaSheetNomi();
 }
 function scegliNome(id){ const p = persone[id]; if (p) salvaNome(p.nome); }
+function mostraSaluto(n){
+  const sp = document.getElementById('splash');
+  document.getElementById('spNome').textContent = testoSaluto(n);
+  document.getElementById('spSotto').textContent = 'Farmaci Nonna';
+  sp.querySelector('.spinner').style.display = 'none';
+  sp.querySelectorAll('.icona,.sp-nome,.sp-sotto').forEach(el => { el.style.animation = 'none'; el.offsetHeight; el.style.animation = ''; });
+  sp.classList.remove('via');
+  setTimeout(() => sp.classList.add('via'), 2200);
+}
 function salvaNome(n){
   n = (n||'').trim(); if (!n) return;
+  const primaVolta = document.getElementById('benvenuto').classList.contains('visibile');
   chi = n; localStorage.setItem('chi', n);
+  if (primaVolta) mostraSaluto(n);
   nascondiBenvenuto(); chiudi(); render();
   if (window._dopoNome){ const f = window._dopoNome; window._dopoNome = null; f(); }
 }
