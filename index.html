@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Farmaci Nonna">
+<meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<title>Farmaci della nonna</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<style>
+:root{
+  --bg:#F2F2F7; --card:#FFFFFF; --fill:rgba(120,120,128,.12);
+  --label:#000; --label2:rgba(60,60,67,.6); --label3:rgba(60,60,67,.3);
+  --sep:rgba(60,60,67,.18); --bar:rgba(249,249,249,.82);
+  --blue:#007AFF; --green:#34C759; --red:#FF3B30; --orange:#FF9500;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#000; --card:#1C1C1E; --fill:rgba(118,118,128,.24);
+    --label:#FFF; --label2:rgba(235,235,245,.6); --label3:rgba(235,235,245,.3);
+    --sep:rgba(84,84,88,.55); --bar:rgba(22,22,24,.82);
+    --blue:#0A84FF; --green:#30D158; --red:#FF453A; --orange:#FF9F0A;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--label)}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,Roboto,"Helvetica Neue",sans-serif;
+  font-size:17px;line-height:1.3;letter-spacing:-.01em;-webkit-font-smoothing:antialiased;
+  padding-bottom:calc(90px + env(safe-area-inset-bottom,0px));-webkit-tap-highlight-color:transparent;
+  -webkit-user-select:none;user-select:none}
+input,textarea{-webkit-user-select:text;user-select:text}
+button,input,textarea{font:inherit;color:inherit;letter-spacing:inherit}
+button{cursor:pointer;background:none;border:none}
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+/* Barra superiore */
+.topbar{position:sticky;top:0;z-index:20;padding:calc(env(safe-area-inset-top,0px) + 8px) 16px 8px;
+  display:flex;align-items:center;gap:10px;background:var(--bar);
+  -webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px)}
+.topbar.ombra{box-shadow:0 .5px 0 var(--sep)}
+.sync{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--label2);flex:1}
+.sync i{width:7px;height:7px;border-radius:50%;background:var(--red)}
+.sync.on i{background:var(--green)}
+.link{color:var(--blue);font-size:17px;padding:6px 4px}
+.avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(180deg,#A0A4AE,#7E828C);color:#fff;
+  font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.plus{width:34px;height:34px;border-radius:50%;background:var(--fill);color:var(--blue);display:flex;align-items:center;justify-content:center}
+
+main{max-width:640px;margin:0 auto;padding:0 16px}
+.titolo{font-size:34px;font-weight:700;letter-spacing:.01em;padding:4px 4px 2px}
+.sottotitolo{color:var(--label2);font-size:15px;padding:0 4px 14px}
+
+/* Striscia settimana */
+.settimana{display:grid;grid-template-columns:28px repeat(7,1fr) 28px;align-items:center;margin-bottom:18px}
+.settimana .freccia{color:var(--blue);height:56px;display:flex;align-items:center;justify-content:center}
+.gg{display:flex;flex-direction:column;align-items:center;gap:4px;padding:2px 0}
+.gg span{font-size:12px;color:var(--label2);font-weight:500}
+.gg b{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:500}
+.gg.oggi b{color:var(--blue);font-weight:600}
+.gg.sel b{background:var(--label);color:var(--bg);font-weight:600}
+.gg.sel.oggi b{background:var(--blue);color:#fff}
+
+/* Riepilogo con anello */
+.riepilogo{background:var(--card);border-radius:14px;padding:16px;display:flex;align-items:center;gap:16px;margin-bottom:22px}
+.anello{position:relative;width:76px;height:76px;flex:none}
+.anello svg{transform:rotate(-90deg)}
+.anello circle{fill:none;stroke-width:9;stroke-linecap:round}
+.anello .traccia{stroke:var(--fill)}
+.anello .prog{stroke:var(--green);transition:stroke-dashoffset .6s cubic-bezier(.2,.8,.2,1)}
+.anello div{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700}
+.riepilogo h3{font-size:20px;font-weight:600;margin-bottom:2px}
+.riepilogo p{color:var(--label2);font-size:15px}
+.riepilogo p.rosso{color:var(--red);font-weight:500}
+
+/* Avvisi */
+.banner{display:flex;gap:12px;align-items:center;background:var(--card);border-radius:14px;padding:12px 14px;margin-bottom:22px}
+.banner .ic{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex:none;color:#fff}
+.banner p{font-size:15px;color:var(--label2)}
+.banner p b{color:var(--label);font-weight:600}
+
+/* Liste raggruppate */
+.sezione{margin-bottom:22px}
+.sez-head{display:flex;align-items:baseline;gap:8px;padding:0 4px 7px}
+.sez-head h4{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.sez-head span{font-size:15px;color:var(--label2)}
+.gruppo{background:var(--card);border-radius:14px;overflow:hidden}
+.riga{display:flex;align-items:center;gap:12px;padding:10px 14px;min-height:62px;position:relative}
+.riga + .riga::before{content:"";position:absolute;top:0;right:0;left:58px;height:.5px;background:var(--sep)}
+.riga.tap:active{background:var(--fill)}
+.pillola{width:32px;height:32px;border-radius:8px;flex:none;display:flex;align-items:center;justify-content:center}
+.testo{flex:1;min-width:0}
+.testo .n{font-size:17px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.testo .d{font-size:15px;color:var(--label2);margin-top:1px}
+.testo .d.rosso{color:var(--red);font-weight:500}
+.testo .d.verde{color:var(--green)}
+.riga.fatta .n{color:var(--label2)}
+.chev{color:var(--label3);flex:none}
+.tag{font-size:13px;font-weight:600;padding:3px 8px;border-radius:20px;background:var(--fill);color:var(--label2);flex:none}
+.tag.basso{background:color-mix(in srgb,var(--orange) 18%,transparent);color:var(--orange)}
+
+/* Bottone spunta stile Promemoria */
+.spunta{width:44px;height:44px;margin:-6px -8px -6px 0;display:flex;align-items:center;justify-content:center;flex:none}
+.spunta i{width:30px;height:30px;border-radius:50%;border:2px solid var(--label3);display:flex;align-items:center;justify-content:center;transition:transform .15s}
+.spunta.ritardo i{border-color:var(--red)}
+.spunta.fatto i{background:var(--green);border-color:var(--green)}
+.spunta svg{opacity:0}
+.spunta.fatto svg{opacity:1}
+.spunta:active i{transform:scale(.88)}
+.pop{animation:pop .35s cubic-bezier(.2,1.6,.4,1)}
+@keyframes pop{0%{transform:scale(.6)}100%{transform:scale(1)}}
+
+.vuoto{text-align:center;padding:60px 24px;color:var(--label2)}
+.vuoto .big{width:64px;height:64px;border-radius:16px;background:var(--fill);margin:0 auto 16px;display:flex;align-items:center;justify-content:center;color:var(--label2)}
+.vuoto h3{color:var(--label);font-size:20px;font-weight:600;margin-bottom:6px}
+.btn-blu{display:inline-block;margin-top:18px;background:var(--blue);color:#fff;font-weight:600;border-radius:12px;padding:13px 22px}
+
+/* Note */
+.compose{background:var(--card);border-radius:14px;padding:4px 14px 10px;margin-bottom:22px}
+.compose textarea{width:100%;border:none;background:none;resize:none;min-height:80px;padding:10px 0;font-size:17px;outline:none}
+.compose .bar{display:flex;justify-content:flex-end;border-top:.5px solid var(--sep);padding-top:8px}
+.compose button{color:var(--blue);font-weight:600;padding:6px 2px}
+.compose button:disabled{color:var(--label3)}
+.nota{padding:12px 14px;position:relative}
+.nota + .nota::before{content:"";position:absolute;top:0;right:0;left:14px;height:.5px;background:var(--sep)}
+.nota .meta{display:flex;justify-content:space-between;font-size:13px;color:var(--label2);margin-bottom:4px}
+.nota .meta button{color:var(--red);font-size:13px}
+.nota p{white-space:pre-wrap;-webkit-user-select:text;user-select:text}
+
+/* Tab bar */
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:20;display:flex;background:var(--bar);box-shadow:0 -.5px 0 var(--sep);
+  -webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);
+  padding:6px 0 calc(env(safe-area-inset-bottom,0px) + 4px)}
+.tabbar button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;font-weight:500;color:var(--label2);padding:2px 0}
+.tabbar button.attivo{color:var(--blue)}
+
+/* Sheet */
+.overlay{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,0);pointer-events:none;transition:background .3s}
+.overlay.aperto{background:rgba(0,0,0,.35);pointer-events:auto}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:51;max-width:640px;margin:0 auto;max-height:94vh;overflow:auto;
+  background:var(--bg);border-radius:14px 14px 0 0;transform:translateY(105%);transition:transform .38s cubic-bezier(.2,.9,.25,1);
+  padding-bottom:calc(env(safe-area-inset-bottom,0px) + 20px)}
+.sheet.aperto{transform:translateY(0)}
+.grabber{width:36px;height:5px;border-radius:3px;background:var(--label3);margin:6px auto 0}
+.sheet-nav{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:8px 16px 14px;position:sticky;top:0;background:var(--bg);z-index:2}
+.sheet-nav h3{font-size:17px;font-weight:600;text-align:center}
+.sheet-nav .sx{justify-self:start}
+.sheet-nav .dx{justify-self:end;font-weight:600}
+.form{padding:0 16px}
+.f-label{font-size:13px;color:var(--label2);padding:0 16px 7px;margin-top:4px}
+.f-gruppo{background:var(--card);border-radius:12px;margin-bottom:22px;overflow:hidden}
+.f-riga{display:flex;align-items:center;gap:10px;padding:0 16px;min-height:48px;position:relative}
+.f-riga + .f-riga::before{content:"";position:absolute;top:0;right:0;left:16px;height:.5px;background:var(--sep)}
+.f-riga label{flex:1}
+.f-riga input:not([type=checkbox]){border:none;background:none;outline:none;font-size:17px;min-width:0}
+.f-riga input.pieno{flex:1;padding:13px 0}
+.f-riga input.num{width:90px;text-align:right;color:var(--label2)}
+.f-riga input[type=time]{flex:1;padding:12px 0;text-align:left}
+.meno{width:22px;height:22px;border-radius:50%;background:var(--red);color:#fff;display:flex;align-items:center;justify-content:center;flex:none}
+.piu{width:22px;height:22px;border-radius:50%;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;flex:none}
+.f-riga.azione{color:var(--blue)}
+.f-riga.distruttiva{color:var(--red);justify-content:center}
+.colori{display:flex;flex-wrap:wrap;gap:12px;padding:14px 16px}
+.colori button{width:34px;height:34px;border-radius:50%;box-shadow:0 0 0 0 var(--bg)}
+.colori button.sel{box-shadow:0 0 0 3px var(--card),0 0 0 5px var(--label3)}
+.switch{appearance:none;-webkit-appearance:none;width:51px;height:31px;border-radius:16px;background:var(--fill);position:relative;transition:background .25s;flex:none}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16);transition:transform .25s}
+.switch:checked{background:var(--green)}
+.switch:checked::after{transform:translateX(20px)}
+.nomi{display:flex;flex-wrap:wrap;gap:8px;padding:0 16px 18px}
+.nomi button{background:var(--card);border-radius:20px;padding:9px 16px;font-weight:500}
+.f-nota{font-size:13px;color:var(--label2);padding:0 16px 18px;margin-top:-14px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<div class="topbar" id="topbar">
+  <div class="sync" id="sync"><i></i><span>Connessione…</span></div>
+  <button class="link" id="btnOggi" style="display:none" onclick="tornaOggi()">Oggi</button>
+  <button class="plus" id="btnPlus" style="display:none" onclick="apriFarmaco()" aria-label="Aggiungi farmaco">
+    <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+  </button>
+  <button class="avatar" id="avatar" onclick="chiediNome()" aria-label="Il tuo nome">?</button>
+</div>
+
+<main id="main"></main>
+
+<div class="tabbar">
+  <button id="tab-oggi" class="attivo" onclick="vai('oggi')">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M7.5 12.3l3 3 6-6.6"/></svg>
+    Oggi</button>
+  <button id="tab-farmaci" onclick="vai('farmaci')">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><g transform="rotate(-45 12 12)"><rect x="2.5" y="8" width="19" height="8" rx="4"/><path d="M12 8v8"/></g></svg>
+    Farmaci</button>
+  <button id="tab-note" onclick="vai('note')">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+    Note</button>
+</div>
+
+<div class="overlay" id="overlay" onclick="chiudi()"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
+
+<script>
+// ====== CONFIGURAZIONE FIREBASE (incolla qui la tua) ======
+const firebaseConfig = {
+  apiKey: "INCOLLA_QUI",
+  authDomain: "INCOLLA_QUI.firebaseapp.com",
+  databaseURL: "https://INCOLLA_QUI-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "INCOLLA_QUI"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const ROOT = db.ref('nonna');
+
+// ====== STATO ======
+let farmaci = {}, somm = {}, note = {};
+let tab = 'oggi';
+let giorno = iso(new Date());
+let chi = localStorage.getItem('chi') || '';
+let sommRef = null, online = false, ultimaSpunta = null;
+const COLORI = ['#FF3B30','#FF9500','#FFCC00','#34C759','#00C7BE','#007AFF','#5856D6','#AF52DE','#FF2D55','#A2845E'];
+const GIORNI = ['L','M','M','G','V','S','D'];
+
+// ====== UTIL ======
+function iso(d){const p=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());}
+function dt(g){return new Date(g+'T12:00');}
+function sposta(g,n){const d=dt(g);d.setDate(d.getDate()+n);return iso(d);}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function num(v){if(v===''||v==null)return null;const n=parseFloat(String(v).replace(',','.'));return isNaN(n)?null:n;}
+function hhmm(ts){return new Date(ts).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});}
+function chiave(fid,ora){return fid+'_'+ora.replace(':','');}
+function inScorta(f){return f.scorta!=null && f.scorta!=='';}
+function scortaBassa(f){return inScorta(f) && Number(f.scorta) <= Number(f.soglia ?? 7);}
+function colore(fid){const f=farmaci[fid];if(f?.colore)return f.colore;const i=Object.keys(farmaci).indexOf(fid);return COLORI[(i<0?0:i)%COLORI.length];}
+function fascia(o){const h=+o.slice(0,2);return h<5?'Notte':h<12?'Mattina':h<14?'Pranzo':h<18?'Pomeriggio':h<22?'Sera':'Notte';}
+function iniziali(n){return n.trim().split(/\s+/).map(p=>p[0]).slice(0,2).join('').toUpperCase();}
+const svgPillola = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><g transform="rotate(-45 12 12)"><rect x="3" y="8.5" width="18" height="7" rx="3.5"/><path d="M12 8.5v7"/></g></svg>`;
+const svgCheck = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
+const svgChev = `<svg class="chev" width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l6 6-6 6"/></svg>`;
+function pill(fid){return `<div class="pillola" style="background:${colore(fid)}">${svgPillola}</div>`;}
+function vibra(){ if (navigator.vibrate) navigator.vibrate(10); }
+
+// ====== SYNC ======
+db.ref('.info/connected').on('value', s => { online = !!s.val(); render(); });
+ROOT.child('farmaci').on('value', s => { farmaci = s.val() || {}; render(); });
+ROOT.child('note').on('value', s => { note = s.val() || {}; render(); });
+function ascoltaGiorno(){
+  if (sommRef) sommRef.off();
+  sommRef = ROOT.child('somministrazioni/' + giorno);
+  sommRef.on('value', s => { somm = s.val() || {}; render(); });
+}
+ascoltaGiorno();
+let oggiVisto = iso(new Date());
+setInterval(() => {
+  const oggi = iso(new Date());
+  if (oggi !== oggiVisto){ if (giorno === oggiVisto){ giorno = oggi; ascoltaGiorno(); } oggiVisto = oggi; }
+  render();
+}, 60000);
+window.addEventListener('scroll', () => document.getElementById('topbar').classList.toggle('ombra', scrollY > 4), {passive:true});
+
+// ====== NAVIGAZIONE ======
+function vai(t){
+  tab = t;
+  ['oggi','farmaci','note'].forEach(x => document.getElementById('tab-'+x).classList.toggle('attivo', x===t));
+  render(); window.scrollTo(0,0);
+}
+function scegliGiorno(g){ if (g===giorno) return; giorno = g; vibra(); ascoltaGiorno(); }
+function tornaOggi(){ scegliGiorno(iso(new Date())); }
+
+// ====== RENDER ======
+function render(){
+  const s = document.getElementById('sync');
+  s.classList.toggle('on', online);
+  s.querySelector('span').textContent = online ? 'Sincronizzato' : 'Offline, salvo appena torna la rete';
+  const av = document.getElementById('avatar');
+  av.textContent = chi ? iniziali(chi) : '?';
+  document.getElementById('btnOggi').style.display = (tab==='oggi' && giorno!==iso(new Date())) ? '' : 'none';
+  document.getElementById('btnPlus').style.display = tab==='farmaci' ? '' : 'none';
+  const m = document.getElementById('main');
+  m.innerHTML = tab==='oggi' ? vistaOggi() : tab==='farmaci' ? vistaFarmaci() : vistaNote();
+  ultimaSpunta = null;
+}
+
+function dosiDelGiorno(){
+  const dosi = [];
+  for (const [fid,f] of Object.entries(farmaci)){
+    if (f.attivo===false) continue;
+    (f.orari||[]).forEach(ora => dosi.push({fid,f,ora}));
+  }
+  for (const [k,s] of Object.entries(somm)){
+    if (s.ora && !dosi.some(d => chiave(d.fid,d.ora)===k)) dosi.push({fid:s.fid, f:farmaci[s.fid]||{nome:s.nome||'Farmaco rimosso'}, ora:s.ora});
+  }
+  return dosi.sort((a,b)=>a.ora.localeCompare(b.ora) || (a.f.nome||'').localeCompare(b.f.nome||''));
+}
+function inRitardo(ora){
+  const oggi = iso(new Date());
+  if (giorno < oggi) return true;
+  if (giorno > oggi) return false;
+  const n = new Date(), [h,m] = ora.split(':').map(Number);
+  return n.getHours()*60+n.getMinutes() > h*60+m+30;
+}
+
+function vistaOggi(){
+  const oggi = iso(new Date());
+  const titolo = giorno===oggi ? 'Oggi' : giorno===sposta(oggi,-1) ? 'Ieri' : giorno===sposta(oggi,1) ? 'Domani'
+    : dt(giorno).toLocaleDateString('it-IT',{weekday:'long'}).replace(/^./,c=>c.toUpperCase());
+  const sotto = dt(giorno).toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'});
+  let h = `<h1 class="titolo">${titolo}</h1><p class="sottotitolo">${sotto}</p>`;
+
+  // Settimana
+  const d = dt(giorno), lun = sposta(giorno, -((d.getDay()+6)%7));
+  h += `<div class="settimana"><button class="freccia" onclick="scegliGiorno(sposta(giorno,-7))" aria-label="Settimana precedente"><svg width="10" height="16" viewBox="0 0 10 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2L2 8l6 6"/></svg></button>`;
+  for (let i=0;i<7;i++){
+    const g = sposta(lun,i);
+    h += `<button class="gg ${g===giorno?'sel':''} ${g===oggi?'oggi':''}" onclick="scegliGiorno('${g}')"><span>${GIORNI[i]}</span><b>${dt(g).getDate()}</b></button>`;
+  }
+  h += `<button class="freccia" onclick="scegliGiorno(sposta(giorno,7))" aria-label="Settimana successiva"><svg width="10" height="16" viewBox="0 0 10 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2l6 6-6 6"/></svg></button></div>`;
+
+  const dosi = dosiDelGiorno();
+  if (!dosi.length) return h + `<div class="vuoto"><div class="big">${svgPillola.replace(/#fff/g,'currentColor').replace('18" height="18','32" height="32')}</div>
+    <h3>Nessun farmaco in programma</h3><p>Aggiungi i farmaci della nonna con dose e orari: compariranno qui ogni giorno.</p>
+    <button class="btn-blu" onclick="vai('farmaci');apriFarmaco()">Aggiungi farmaco</button></div>`;
+
+  // Riepilogo
+  const fatte = dosi.filter(x => somm[chiave(x.fid,x.ora)]).length;
+  const tot = dosi.length, C = 2*Math.PI*33, off = C*(1-fatte/tot);
+  const ritardi = dosi.filter(x => !somm[chiave(x.fid,x.ora)] && inRitardo(x.ora));
+  const prossima = dosi.find(x => !somm[chiave(x.fid,x.ora)] && !inRitardo(x.ora));
+  let titoloR, testoR, rosso = false;
+  if (fatte===tot){ titoloR = giorno===oggi ? 'Tutto fatto per oggi' : 'Tutte le dosi date'; testoR = `${tot} ${tot===1?'dose data':'dosi date'}`; }
+  else if (ritardi.length){ titoloR = `${fatte} di ${tot} dosi date`; rosso = true;
+    testoR = ritardi.length===1 ? `${ritardi[0].f.nome} delle ${ritardi[0].ora} non risulta data` : `${ritardi.length} dosi non risultano date`; }
+  else { titoloR = `${fatte} di ${tot} dosi date`; testoR = prossima ? `Prossima: ${prossima.f.nome} alle ${prossima.ora}` : ''; }
+  h += `<div class="riepilogo"><div class="anello"><svg width="76" height="76" viewBox="0 0 76 76">
+      <circle class="traccia" cx="38" cy="38" r="33"/><circle class="prog" cx="38" cy="38" r="33" stroke-dasharray="${C}" stroke-dashoffset="${off}"/></svg>
+      <div>${fatte===tot?`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`:Math.round(fatte/tot*100)+'%'}</div></div>
+    <div><h3>${esc(titoloR)}</h3><p class="${rosso?'rosso':''}">${esc(testoR)}</p></div></div>`;
+
+  // Scorte basse
+  const bassi = Object.values(farmaci).filter(f => f.attivo!==false && scortaBassa(f));
+  if (bassi.length) h += `<div class="banner"><div class="ic" style="background:var(--orange)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M12 7v6M12 17h.01"/></svg></div>
+    <p>Da ricomprare: ${bassi.map(f=>`<b>${esc(f.nome)}</b> (${f.scorta} rimaste)`).join(', ')}</p></div>`;
+
+  // Fasce orarie
+  const gruppi = {};
+  dosi.forEach(x => (gruppi[x.ora] ||= []).push(x));
+  for (const [o,lista] of Object.entries(gruppi)){
+    h += `<div class="sezione"><div class="sez-head"><h4>${o}</h4><span>${fascia(o)}</span></div><div class="gruppo">`;
+    lista.forEach(x => {
+      const k = chiave(x.fid,x.ora), s = somm[k], rit = !s && inRitardo(x.ora);
+      const det = s ? `<div class="d verde">Data${s.chi && s.chi!=='—' ? ' da '+esc(s.chi) : ''} alle ${hhmm(s.ts)}</div>`
+        : rit ? `<div class="d rosso">Non ancora data${x.f.dose?' · '+esc(x.f.dose):''}</div>`
+        : `<div class="d">${esc(x.f.dose||'')}</div>`;
+      h += `<div class="riga ${s?'fatta':''}">${pill(x.fid)}<div class="testo"><div class="n">${esc(x.f.nome)}</div>${det}</div>
+        <button class="spunta ${s?'fatto':''} ${rit?'ritardo':''}" onclick="${s?`annulla('${x.fid}','${x.ora}')`:`segna('${x.fid}','${x.ora}')`}" aria-label="${s?'Annulla dose':'Segna come data'}">
+        <i class="${ultimaSpunta===k?'pop':''}">${svgCheck}</i></button></div>`;
+    });
+    h += `</div></div>`;
+  }
+  return h;
+}
+
+function vistaFarmaci(){
+  let h = `<h1 class="titolo">Farmaci</h1>`;
+  const lista = Object.entries(farmaci).sort((a,b)=>(a[1].attivo===false)-(b[1].attivo===false) || a[1].nome.localeCompare(b[1].nome));
+  if (!lista.length) return h + `<div class="vuoto"><div class="big">${svgPillola.replace(/#fff/g,'currentColor').replace('18" height="18','32" height="32')}</div>
+    <h3>Nessun farmaco</h3><p>Aggiungi il primo farmaco con nome, dose e orari.</p>
+    <button class="btn-blu" onclick="apriFarmaco()">Aggiungi farmaco</button></div>`;
+  h += `<p class="sottotitolo">${lista.filter(([,f])=>f.attivo!==false).length} in terapia</p>`;
+  const attivi = lista.filter(([,f])=>f.attivo!==false), sospesi = lista.filter(([,f])=>f.attivo===false);
+  const riga = ([fid,f]) => `<div class="riga tap" onclick="apriFarmaco('${fid}')" style="${f.attivo===false?'opacity:.5':''}">${pill(fid)}
+    <div class="testo"><div class="n">${esc(f.nome)}</div><div class="d">${(f.orari||[]).join('  ')||'Nessun orario'}${f.dose?' · '+esc(f.dose):''}</div></div>
+    ${inScorta(f)?`<span class="tag ${scortaBassa(f)?'basso':''}">${f.scorta}</span>`:''}${svgChev}</div>`;
+  if (attivi.length) h += `<div class="sezione"><div class="gruppo">${attivi.map(riga).join('')}</div></div>`;
+  if (sospesi.length) h += `<div class="sezione"><div class="sez-head"><h4 style="font-size:17px">Sospesi</h4></div><div class="gruppo">${sospesi.map(riga).join('')}</div></div>`;
+  return h;
+}
+
+function vistaNote(){
+  let h = `<h1 class="titolo">Note</h1><p class="sottotitolo">Visite, cambi di terapia e messaggi tra di voi</p>
+    <div class="compose"><textarea id="nuovaNota" placeholder="Scrivi una nota…" oninput="document.getElementById('btnNota').disabled=!this.value.trim()"></textarea>
+    <div class="bar"><button id="btnNota" disabled onclick="aggiungiNota()">Pubblica</button></div></div>`;
+  const lista = Object.entries(note).sort((a,b)=>b[1].ts-a[1].ts);
+  if (!lista.length) return h;
+  h += `<div class="gruppo">`;
+  lista.forEach(([id,n]) => {
+    const d = new Date(n.ts).toLocaleString('it-IT',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+    h += `<div class="nota"><div class="meta"><span><b style="color:var(--label);font-weight:600">${esc(n.chi||'—')}</b>, ${d}</span>
+      <button onclick="eliminaNota('${id}')">Elimina</button></div><p>${esc(n.testo)}</p></div>`;
+  });
+  return h + `</div>`;
+}
+
+// ====== AZIONI DOSI ======
+function aggiornaScorta(fid, delta){
+  const f = farmaci[fid]; if (!f || !inScorta(f)) return;
+  ROOT.child(`farmaci/${fid}/scorta`).transaction(v => v==null ? v : Math.max(0, Number(v)+delta));
+}
+function segna(fid, ora){
+  if (!chi) { chiediNome(() => segna(fid, ora)); return; }
+  const f = farmaci[fid], k = chiave(fid,ora);
+  vibra(); ultimaSpunta = k;
+  ROOT.child(`somministrazioni/${giorno}/${k}`).set({fid, ora, nome:f?.nome||'', chi, ts:Date.now()});
+  aggiornaScorta(fid, -(num(f?.perDose) ?? 1));
+}
+function annulla(fid, ora){
+  if (!confirm('Segnare questa dose come non data?')) return;
+  ROOT.child(`somministrazioni/${giorno}/${chiave(fid,ora)}`).remove();
+  aggiornaScorta(fid, num(farmaci[fid]?.perDose) ?? 1);
+}
+
+// ====== SHEET ======
+function apri(html){
+  const s = document.getElementById('sheet');
+  s.innerHTML = `<div class="grabber"></div>` + html;
+  s.scrollTop = 0;
+  document.getElementById('overlay').classList.add('aperto'); s.classList.add('aperto');
+}
+function chiudi(){
+  document.getElementById('overlay').classList.remove('aperto');
+  document.getElementById('sheet').classList.remove('aperto');
+}
+function nav(titolo, sx, dx){
+  return `<div class="sheet-nav"><button class="link sx" onclick="${sx[1]}">${sx[0]}</button><h3>${titolo}</h3><button class="link dx" onclick="${dx[1]}">${dx[0]}</button></div>`;
+}
+
+// ====== NOME (senza login) ======
+function chiediNome(dopo){
+  window._dopoNome = typeof dopo === 'function' ? dopo : null;
+  const usati = [...new Set(Object.values(somm).map(s=>s.chi).concat(Object.values(note).map(n=>n.chi)).filter(x=>x && x!=='—'))];
+  apri(nav('Chi sei?', ['Annulla','chiudi()'], ['Fine',"salvaNome(document.getElementById('inNome').value)"]) +
+    `<div class="form" style="padding:0">
+    ${usati.length?`<div class="f-label">Scegli il tuo nome</div><div class="nomi">${usati.map(n=>`<button onclick="salvaNome(this.textContent)">${esc(n)}</button>`).join('')}</div>`:''}
+    <div class="form"><div class="f-gruppo"><div class="f-riga"><input class="pieno" id="inNome" value="${esc(chi)}" placeholder="Il tuo nome" autocomplete="given-name"></div></div></div>
+    <p class="f-nota">Serve solo a mostrare chi ha dato la dose. Resta salvato su questo telefono.</p></div>`);
+}
+function salvaNome(n){
+  n = (n||'').trim(); if (!n) return;
+  chi = n; localStorage.setItem('chi', n); chiudi(); render();
+  if (window._dopoNome){ const f = window._dopoNome; window._dopoNome = null; f(); }
+}
+
+// ====== FARMACO ======
+let coloreSel = null;
+function apriFarmaco(fid){
+  const f = fid ? farmaci[fid] : {nome:'',dose:'',orari:['08:00'],perDose:1,soglia:7,attivo:true};
+  coloreSel = fid ? colore(fid) : COLORI[Object.keys(farmaci).length % COLORI.length];
+  apri(nav(fid?'Modifica':'Nuovo farmaco', ['Annulla','chiudi()'], ['Salva', `salvaFarmaco(${fid?`'${fid}'`:''})`]) + `<div class="form">
+    <div class="f-gruppo">
+      <div class="f-riga"><input class="pieno" id="fNome" value="${esc(f.nome)}" placeholder="Nome, es. Cardioaspirina"></div>
+      <div class="f-riga"><input class="pieno" id="fDose" value="${esc(f.dose||'')}" placeholder="Dose, es. 1 compressa"></div>
+      <div class="f-riga"><input class="pieno" id="fNote" value="${esc(f.note||'')}" placeholder="Note, es. a stomaco pieno"></div>
+    </div>
+    <div class="f-label">Orari</div>
+    <div class="f-gruppo"><div id="fOrari">${(f.orari||[]).map(rigaOrario).join('')}</div>
+      <button class="f-riga azione" style="width:100%" onclick="aggiungiOrario()"><span class="piu"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M5 1v8M1 5h8" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></span>Aggiungi orario</button>
+    </div>
+    <div class="f-label">Scorta</div>
+    <div class="f-gruppo">
+      <div class="f-riga"><label for="fScorta">Pastiglie in casa</label><input class="num" id="fScorta" inputmode="decimal" value="${f.scorta??''}" placeholder="—"></div>
+      <div class="f-riga"><label for="fSoglia">Avvisa sotto</label><input class="num" id="fSoglia" inputmode="decimal" value="${f.soglia??7}"></div>
+      <div class="f-riga"><label for="fPerDose">Pastiglie per dose</label><input class="num" id="fPerDose" inputmode="decimal" value="${f.perDose??1}"></div>
+    </div>
+    <p class="f-nota">Lascia vuoto "Pastiglie in casa" se non vuoi contare le scorte.</p>
+    <div class="f-label">Colore</div>
+    <div class="f-gruppo"><div class="colori" id="fColori">${COLORI.map(c=>`<button style="background:${c}" class="${c===coloreSel?'sel':''}" onclick="scegliColore('${c}')" aria-label="Colore"></button>`).join('')}</div></div>
+    <div class="f-gruppo"><div class="f-riga"><label for="fAttivo">In terapia</label><input type="checkbox" class="switch" id="fAttivo" ${f.attivo!==false?'checked':''}></div></div>
+    ${fid?`<div class="f-gruppo"><button class="f-riga distruttiva" style="width:100%" onclick="eliminaFarmaco('${fid}')">Elimina farmaco</button></div>`:''}
+  </div>`);
+  if (!fid) setTimeout(()=>document.getElementById('fNome').focus(), 400);
+}
+function rigaOrario(o){return `<div class="f-riga"><button class="meno" onclick="this.parentNode.remove()" aria-label="Rimuovi orario"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M1.5 5h7" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></button><input type="time" value="${o}"></div>`;}
+function aggiungiOrario(){ document.getElementById('fOrari').insertAdjacentHTML('beforeend', rigaOrario('12:00')); }
+function scegliColore(c){ coloreSel = c; document.querySelectorAll('#fColori button').forEach(b => b.classList.toggle('sel', b.style.background && b.getAttribute('onclick').includes(c))); }
+function salvaFarmaco(fid){
+  const nome = document.getElementById('fNome').value.trim();
+  if (!nome){ document.getElementById('fNome').focus(); return; }
+  const orari = [...document.querySelectorAll('#fOrari input')].map(i=>i.value).filter(Boolean);
+  const dati = {
+    nome, dose: document.getElementById('fDose').value.trim(),
+    orari: [...new Set(orari)].sort(),
+    scorta: num(document.getElementById('fScorta').value),
+    soglia: num(document.getElementById('fSoglia').value) ?? 7,
+    perDose: num(document.getElementById('fPerDose').value) ?? 1,
+    note: document.getElementById('fNote').value.trim(),
+    colore: coloreSel,
+    attivo: document.getElementById('fAttivo').checked,
+    modificatoDa: chi || '—', modificatoIl: Date.now()
+  };
+  if (fid) ROOT.child('farmaci/'+fid).set(dati); else ROOT.child('farmaci').push(dati);
+  chiudi();
+}
+function eliminaFarmaco(fid){
+  if (!confirm(`Eliminare ${farmaci[fid].nome}?\n\nSe la nonna lo sospende solo per un periodo, meglio disattivare "In terapia".`)) return;
+  ROOT.child('farmaci/'+fid).remove(); chiudi();
+}
+
+// ====== NOTE ======
+function aggiungiNota(){
+  const t = document.getElementById('nuovaNota').value.trim(); if (!t) return;
+  if (!chi) { chiediNome(aggiungiNota); return; }
+  ROOT.child('note').push({testo:t, chi, ts:Date.now()});
+}
+function eliminaNota(id){ if (confirm('Eliminare questa nota?')) ROOT.child('note/'+id).remove(); }
+
+render();
+</script>
+</body>
+</html>
