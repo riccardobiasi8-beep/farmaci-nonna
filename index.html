@@ -238,6 +238,39 @@ main{max-width:640px;margin:0 auto;padding:0 16px}
 .chips button.sel{background:var(--blue);color:#fff}
 .f-gruppo textarea{width:100%;border:none;background:none;padding:12px 16px;font-size:17px;min-height:96px;resize:vertical;outline:none}
 .f-riga input.dx{flex:none;text-align:right;color:var(--label2);padding:12px 0}
+/* Foto */
+.pillola.foto{width:36px;height:36px;margin:-2px;object-fit:cover;border-radius:9px;background:var(--fill)}
+.foto-box{display:flex;align-items:center;gap:14px;padding:12px 16px}
+.foto-box img{width:76px;height:76px;border-radius:12px;object-fit:cover}
+.foto-azioni{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+#visore{position:fixed;inset:0;z-index:150;background:#000;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:calc(env(safe-area-inset-top,0px) + 50px) 12px calc(env(safe-area-inset-bottom,0px) + 24px)}
+#visore.aperto{display:flex}
+#visore img{width:min(100%,560px);height:auto;max-height:78vh;object-fit:contain;border-radius:8px}
+#visore p{color:#fff;font-size:17px;font-weight:600}
+#visore .chiudi{position:absolute;top:calc(env(safe-area-inset-top,0px) + 10px);right:16px;color:#0A84FF;font-size:17px;font-weight:600;padding:8px}
+/* Stampa */
+#stampa{display:none}
+@media print{
+  html,body{background:#fff!important}
+  body{padding:0!important;color:#000!important;font-size:11pt}
+  body > *:not(#stampa){display:none!important}
+  #stampa{display:block!important;color:#000}
+  #stampa h1{font-size:20pt;margin:0 0 2pt}
+  #stampa h2{font-size:14pt;margin:16pt 0 6pt}
+  #stampa .st-sub{color:#555;margin:0 0 10pt}
+  #stampa table{width:100%;border-collapse:collapse}
+  #stampa th{text-align:left;font-size:9pt;color:#555;border-bottom:1.5pt solid #000;padding:4pt 6pt}
+  #stampa td{border-bottom:.5pt solid #bbb;padding:6pt;vertical-align:middle}
+  #stampa td.ora{font-weight:700;font-size:12pt;white-space:nowrap}
+  #stampa .c{text-align:center}
+  #stampa .box{display:inline-block;width:12pt;height:12pt;border:1.2pt solid #000;border-radius:2pt}
+  #stampa .no{color:#999}
+  #stampa .st-f{display:flex;align-items:center;gap:6pt}
+  #stampa .st-f img{width:28pt;height:28pt;object-fit:cover;border-radius:3pt}
+  #stampa small{color:#555}
+  #stampa tr{break-inside:avoid}
+  #stampa .st-piede{margin-top:14pt;font-size:8pt;color:#777}
+}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -261,6 +294,9 @@ try { const n = localStorage.getItem('chi'); if (n){ document.getElementById('sp
 <div class="topbar" id="topbar">
   <div class="sync" id="sync"><i></i><span>Connessione…</span></div>
   <button class="link" id="btnOggi" style="display:none" onclick="tornaOggi()">Oggi</button>
+  <button class="plus" id="btnStampa" style="display:none" onclick="apriStampa()" aria-label="Stampa la terapia">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg>
+  </button>
   <button class="plus" id="btnPlus" style="display:none" onclick="tab==='visite' ? apriVisita() : apriFarmaco()" aria-label="Aggiungi">
     <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
   </button>
@@ -287,6 +323,8 @@ try { const n = localStorage.getItem('chi'); if (n){ document.getElementById('sp
 
 <div class="overlay" id="overlay" onclick="chiudi()"></div>
 <div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
+<div id="visore" onclick="chiudiFoto()"></div>
+<div id="stampa"></div>
 
 <script>
 // ====== CONFIGURAZIONE FIREBASE ======
@@ -347,7 +385,12 @@ function descrFreq(f){
   if (fr === 'settimana') return [...(f.giorniSett||[])].sort().map(i => ['Lun','Mar','Mer','Gio','Ven','Sab','Dom'][i]).join(' ') || 'Nessun giorno';
   return 'Ogni giorno';
 }
-function pill(fid){return `<div class="pillola" style="background:${colore(fid)}">${svgPillola}</div>`;}
+function pill(fid){
+  const m = farmaci[fid]?.miniatura;
+  if (m) return `<img class="pillola foto" src="${m}" alt="Foto della scatola" onclick="event.stopPropagation(); vediFoto('${fid}')">`;
+  return `<div class="pillola" style="background:${colore(fid)}">${svgPillola}</div>`;
+}
+const svgGenerico = f => f.generico ? `<div class="d">Generico: ${esc(f.generico)}</div>` : '';
 function vibra(){ if (navigator.vibrate) navigator.vibrate(10); }
 
 // ====== SYNC ======
@@ -415,6 +458,7 @@ window.addEventListener('scroll', () => document.getElementById('topbar').classL
 // ====== NAVIGAZIONE ======
 function vai(t){
   tab = t;
+  if (t === 'oggi' && giorno !== iso(new Date())) { giorno = iso(new Date()); ascoltaGiorno(); }
   ['oggi','farmaci','visite','note'].forEach(x => document.getElementById('tab-'+x).classList.toggle('attivo', x===t));
   render(); window.scrollTo(0,0);
 }
@@ -431,6 +475,7 @@ function render(){
   av.style.background = chi ? coloreNome(chi) : '';
   document.getElementById('btnOggi').style.display = (tab==='oggi' && giorno!==iso(new Date())) ? '' : 'none';
   document.getElementById('btnPlus').style.display = (tab==='farmaci' || tab==='visite') ? '' : 'none';
+  document.getElementById('btnStampa').style.display = tab==='farmaci' ? '' : 'none';
   const m = document.getElementById('main');
   m.innerHTML = tab==='oggi' ? vistaOggi() : tab==='farmaci' ? vistaFarmaci() : tab==='visite' ? vistaVisite() : vistaNote();
   ultimaSpunta = null;
@@ -529,7 +574,7 @@ function vistaOggi(){
         : s.modo==='saltata' ? `<div class="d arancio">Non presa${da?', segnato da '+da:''} alle ${hhmm(s.ts)}</div>`
         : s.modo==='sola' ? `<div class="d verde">Presa da sola${da?', segnato da '+da:''} alle ${hhmm(s.ts)}</div>`
         : `<div class="d verde">Data${da?' da '+da:''} alle ${hhmm(s.ts)}</div>`;
-      h += `<div class="riga ${s?'fatta':''}">${pill(x.fid)}<div class="testo"><div class="n">${esc(x.f.nome)}</div>${det}</div>
+      h += `<div class="riga ${s?'fatta':''}">${pill(x.fid)}<div class="testo"><div class="n">${esc(x.f.nome)}</div>${det}${svgGenerico(x.f)}</div>
         <button class="spunta ${s?(s.modo==='saltata'?'fatto saltata':'fatto'):''} ${rit?'ritardo':''}" onclick="${s?`annulla('${x.fid}','${x.ora}')`:`segna('${x.fid}','${x.ora}')`}" aria-label="${s?'Annulla dose':'Segna dose'}">
         <i class="${ultimaSpunta===k?'pop':''}">${s?.modo==='saltata'?svgX:svgCheck}</i></button></div>`;
     });
@@ -565,7 +610,7 @@ function vistaFarmaci(){
   h += `<p class="sottotitolo">${lista.filter(([,f])=>f.attivo!==false).length} in terapia</p>`;
   const attivi = lista.filter(([,f])=>f.attivo!==false), sospesi = lista.filter(([,f])=>f.attivo===false);
   const riga = ([fid,f]) => `<div class="riga tap" onclick="apriFarmaco('${fid}')" style="${f.attivo===false?'opacity:.5':''}">${pill(fid)}
-    <div class="testo"><div class="n">${esc(f.nome)}</div><div class="d">${descrFreq(f)}${f.frequenza!=='bisogno' && (f.orari||[]).length ? ', '+f.orari.join(' ') : ''}${f.dose?' · '+esc(f.dose):''}</div></div>
+    <div class="testo"><div class="n">${esc(f.nome)}</div><div class="d">${descrFreq(f)}${f.frequenza!=='bisogno' && (f.orari||[]).length ? ', '+f.orari.join(' ') : ''}${f.dose?' · '+esc(f.dose):''}</div>${svgGenerico(f)}</div>
     ${inScorta(f)?`<span class="tag ${scortaBassa(f)?'basso':''}">${f.scorta}</span>`:''}${svgChev}</div>`;
   if (attivi.length) h += `<div class="sezione"><div class="gruppo">${attivi.map(riga).join('')}</div></div>`;
   if (sospesi.length) h += `<div class="sezione"><div class="sez-head"><h4 style="font-size:17px">Sospesi</h4></div><div class="gruppo">${sospesi.map(riga).join('')}</div></div>`;
@@ -751,13 +796,18 @@ function apriFarmaco(fid){
   const f = fid ? farmaci[fid] : {nome:'',dose:'',orari:['08:00'],perDose:1,soglia:7,attivo:true};
   coloreSel = fid ? colore(fid) : COLORI[Object.keys(farmaci).length % COLORI.length];
   freqSel = f.frequenza || 'giornaliera';
+  fotoMini = f.miniatura || null; fotoNuova = null; fotoRimossa = false;
   giorniSel = [...(f.giorniSett || [])];
   apri(nav(fid?'Modifica':'Nuovo farmaco', ['Annulla','chiudi()'], ['Salva', `salvaFarmaco(${fid?`'${fid}'`:''})`]) + `<div class="form">
     <div class="f-gruppo">
       <div class="f-riga"><input class="pieno" id="fNome" value="${esc(f.nome)}" placeholder="Nome, es. Cardioaspirina"></div>
+      <div class="f-riga"><input class="pieno" id="fGenerico" value="${esc(f.generico||'')}" placeholder="Generico equivalente, es. Acido acetilsalicilico"></div>
       <div class="f-riga"><input class="pieno" id="fDose" value="${esc(f.dose||'')}" placeholder="Dose, es. 1 compressa"></div>
       <div class="f-riga"><input class="pieno" id="fNote" value="${esc(f.note||'')}" placeholder="Note, es. a stomaco pieno"></div>
     </div>
+    <div class="f-label">Foto della scatola</div>
+    <div class="f-gruppo" id="fFotoBox">${htmlFotoBox()}</div>
+    <input type="file" accept="image/*" id="fFotoIn" hidden onchange="caricaFoto(this)">
     <div class="f-label">Quando</div>
     <div class="f-gruppo">${FREQ.map(([v,l]) => `<button class="f-riga opzione" data-freq="${v}" onclick="scegliFreq('${v}')"><span>${l}</span>${svgSpunta}</button>`).join('')}</div>
     <div id="boxOgniN">
@@ -832,12 +882,17 @@ function salvaFarmaco(fid){
     attivo: document.getElementById('fAttivo').checked,
     modificatoDa: chi || '—', modificatoIl: Date.now()
   };
-  if (fid) PR().child('farmaci/'+fid).set(dati); else PR().child('farmaci').push(dati);
+  dati.generico = document.getElementById('fGenerico').value.trim();
+  dati.miniatura = fotoRimossa ? null : (fotoNuova ? fotoMini : (fid ? farmaci[fid]?.miniatura || null : null));
+  const ref = fid ? PR().child('farmaci/'+fid) : PR().child('farmaci').push();
+  ref.set(dati);
+  if (fotoNuova) PR().child('foto/' + ref.key).set(fotoNuova);
+  else if (fotoRimossa) PR().child('foto/' + ref.key).remove();
   chiudi();
 }
 function eliminaFarmaco(fid){
   if (!confirm(`Eliminare ${farmaci[fid].nome}?\n\nSe va sospeso solo per un periodo, meglio disattivare \"In terapia\".`)) return;
-  PR().child('farmaci/'+fid).remove(); chiudi();
+  PR().child('farmaci/'+fid).remove(); PR().child('foto/'+fid).remove(); chiudi();
   // Toglie anche le sue dosi di oggi, così non resta una riga "fantasma" in Oggi (lo storico dei giorni passati resta)
   const oggi = iso(new Date());
   PR().child('somministrazioni/' + oggi).once('value').then(snap => {
@@ -989,6 +1044,101 @@ function salvaVisita(id){
 function eliminaVisita(id){
   if (!confirm('Eliminare questa visita?')) return;
   PR().child('visite/' + id).remove(); chiudi();
+}
+
+// ====== FOTO ======
+let fotoMini = null, fotoNuova = null, fotoRimossa = false;
+const svgCamera = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z"/><circle cx="12" cy="13" r="3.5"/></svg>`;
+function htmlFotoBox(){
+  if (fotoMini) return `<div class="foto-box"><img src="${fotoMini}" alt="Foto della scatola">
+    <div class="foto-azioni"><button class="link" onclick="document.getElementById('fFotoIn').click()">Cambia foto</button>
+    <button class="link" style="color:var(--red)" onclick="rimuoviFoto()">Rimuovi foto</button></div></div>`;
+  return `<button class="f-riga azione" style="width:100%" onclick="document.getElementById('fFotoIn').click()">${svgCamera}Scatta o scegli una foto</button>`;
+}
+function ridimensiona(img, max, q, quadrata){
+  const w = img.naturalWidth, h = img.naturalHeight, c = document.createElement('canvas'), x = c.getContext('2d');
+  if (quadrata){ const l = Math.min(w,h); c.width = c.height = max; x.drawImage(img, (w-l)/2, (h-l)/2, l, l, 0, 0, max, max); }
+  else { const r = Math.min(1, max / Math.max(w,h)); c.width = Math.round(w*r); c.height = Math.round(h*r); x.drawImage(img, 0, 0, c.width, c.height); }
+  return c.toDataURL('image/jpeg', q);
+}
+function caricaFoto(input){
+  const file = input.files && input.files[0]; if (!file) return;
+  const url = URL.createObjectURL(file), img = new Image();
+  img.onload = () => {
+    fotoNuova = ridimensiona(img, 900, .72, false);
+    fotoMini = ridimensiona(img, 160, .7, true);
+    fotoRimossa = false; URL.revokeObjectURL(url);
+    document.getElementById('fFotoBox').innerHTML = htmlFotoBox();
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); alert('Non riesco a leggere questa foto. Prova a scattarla di nuovo.'); };
+  img.src = url; input.value = '';
+}
+function rimuoviFoto(){ fotoMini = null; fotoNuova = null; fotoRimossa = true; document.getElementById('fFotoBox').innerHTML = htmlFotoBox(); }
+function vediFoto(fid){
+  const f = farmaci[fid]; if (!f?.miniatura) return;
+  const v = document.getElementById('visore');
+  v.innerHTML = `<button class="chiudi" onclick="chiudiFoto()">Fine</button><img id="visoreImg" src="${f.miniatura}" alt="Foto della scatola"><p>${esc(f.nome)}</p>${f.generico ? `<p style="font-weight:400;opacity:.7;margin-top:-8px">Generico: ${esc(f.generico)}</p>` : ''}`;
+  v.classList.add('aperto');
+  PR().child('foto/' + fid).once('value').then(s => { const d = s.val(), el = document.getElementById('visoreImg'); if (d && el) el.src = d; });
+}
+function chiudiFoto(){ document.getElementById('visore').classList.remove('aperto'); }
+
+// ====== STAMPA ======
+let stampaModo = 'giorno';
+function apriStampa(){
+  stampaModo = 'giorno';
+  apri(nav('Stampa terapia', ['Annulla','chiudi()'], ['Stampa','eseguiStampa()']) + `<div class="form">
+    <div class="f-label">Cosa stampare</div>
+    <div class="f-gruppo">${[['giorno','Un giorno'],['settimana','Una settimana (7 giorni)']].map(([v,l]) => `<button class="f-riga opzione" data-st="${v}" onclick="stampaModo='${v}'; aggiornaStampaUI()"><span>${l}</span>${svgSpunta}</button>`).join('')}</div>
+    <div class="f-gruppo">
+      <div class="f-riga"><label for="stData" id="stLabel">Giorno</label><input type="date" class="dx" id="stData" value="${giorno}"></div>
+      <div class="f-riga"><label for="stFoto">Foto delle scatole</label><input type="checkbox" class="switch" id="stFoto" checked></div>
+    </div>
+    <p class="f-nota">Si apre la stampa del telefono: puoi stampare oppure salvare come PDF e inviarlo, per esempio su WhatsApp.</p></div>`);
+  aggiornaStampaUI();
+}
+function aggiornaStampaUI(){
+  document.querySelectorAll('[data-st]').forEach(b => b.querySelector('svg').style.visibility = b.dataset.st===stampaModo ? 'visible' : 'hidden');
+  document.getElementById('stLabel').textContent = stampaModo==='giorno' ? 'Giorno' : 'A partire dal';
+}
+function dosiPreviste(g){
+  const d = [];
+  for (const [fid,f] of Object.entries(farmaci)){
+    if (f.attivo===false || !previsto(f, g)) continue;
+    (f.orari||[]).forEach(ora => d.push({fid, f, ora}));
+  }
+  return d.sort((a,b) => a.ora.localeCompare(b.ora) || a.f.nome.localeCompare(b.f.nome));
+}
+function cellaFarmaco(f, foto, conNote){
+  return `<div class="st-f">${foto && f.miniatura ? `<img src="${f.miniatura}" alt="">` : ''}<div><b>${esc(f.nome)}</b>${f.generico ? `<br><small>Generico: ${esc(f.generico)}</small>` : ''}${conNote && f.note ? `<br><small>${esc(f.note)}</small>` : ''}</div></div>`;
+}
+function eseguiStampa(){
+  const g0 = document.getElementById('stData').value || giorno, foto = document.getElementById('stFoto').checked;
+  const lunga = g => dt(g).toLocaleDateString('it-IT', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+  const bisogno = Object.values(farmaci).filter(f => f.attivo!==false && f.frequenza==='bisogno').sort((a,b) => a.nome.localeCompare(b.nome));
+  let h = `<h1>Terapia di ${esc(nomePaz())}</h1>`;
+  if (stampaModo === 'giorno'){
+    const dosi = dosiPreviste(g0);
+    h = `<style>@page{size:A4 portrait;margin:14mm}</style>` + h + `<p class="st-sub">${lunga(g0)}</p>`;
+    h += dosi.length ? `<table><thead><tr><th>Ora</th><th>Farmaco</th><th>Dose</th><th>Note</th><th class="c">Data</th></tr></thead><tbody>
+      ${dosi.map((x,i) => `<tr><td class="ora">${i && dosi[i-1].ora===x.ora ? '' : x.ora}</td><td>${cellaFarmaco(x.f, foto, false)}</td><td>${esc(x.f.dose||'')}</td><td>${esc(x.f.note||'')}</td><td class="c"><span class="box"></span></td></tr>`).join('')}
+      </tbody></table>` : `<p>Nessun farmaco a orario in questo giorno.</p>`;
+  } else {
+    const giorni = [...Array(7)].map((_,i) => sposta(g0, i)), righe = {};
+    giorni.forEach(g => dosiPreviste(g).forEach(x => { righe[x.ora + '|' + x.fid] = x; }));
+    const lista = Object.values(righe).sort((a,b) => a.ora.localeCompare(b.ora) || a.f.nome.localeCompare(b.f.nome));
+    const GG = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
+    h = `<style>@page{size:A4 landscape;margin:10mm}</style>` + h + `<p class="st-sub">Dal ${lunga(giorni[0])} al ${lunga(giorni[6])}</p>`;
+    h += lista.length ? `<table><thead><tr><th>Ora</th><th>Farmaco</th><th>Dose</th>${giorni.map(g => { const d = dt(g); return `<th class="c">${GG[d.getDay()]}<br>${d.getDate()}/${d.getMonth()+1}</th>`; }).join('')}</tr></thead><tbody>
+      ${lista.map((x,i) => `<tr><td class="ora">${i && lista[i-1].ora===x.ora ? '' : x.ora}</td><td>${cellaFarmaco(x.f, foto, true)}</td><td>${esc(x.f.dose||'')}</td>${giorni.map(g => `<td class="c">${previsto(x.f, g) ? '<span class="box"></span>' : '<span class="no">–</span>'}</td>`).join('')}</tr>`).join('')}
+      </tbody></table>` : `<p>Nessun farmaco a orario in questa settimana.</p>`;
+  }
+  if (bisogno.length) h += `<h2>Al bisogno</h2><table><thead><tr><th>Farmaco</th><th>Dose</th><th>Massimo al giorno</th><th>Note</th></tr></thead><tbody>
+    ${bisogno.map(f => `<tr><td>${cellaFarmaco(f, foto, false)}</td><td>${esc(f.dose||'')}</td><td>${f.maxGiorno ?? '–'}</td><td>${esc(f.note||'')}</td></tr>`).join('')}</tbody></table>`;
+  h += `<p class="st-piede">Stampato con Farmaci Nonni il ${new Date().toLocaleDateString('it-IT')}${chi ? ' da ' + esc(chi) : ''}</p>`;
+  document.getElementById('stampa').innerHTML = h;
+  chiudi();
+  setTimeout(() => window.print(), 450);
 }
 
 // ====== NOTE ======
