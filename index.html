@@ -357,6 +357,7 @@ const svgX = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke
 function diffGiorni(a, b){ return Math.round((dt(b) - dt(a)) / 864e5); }
 // Periodo di terapia: inizio, fine ed eventuale pausa ciclica (es. 21 giorni sì, 15 di pausa, poi riprende)
 function inPeriodo(f, g){
+  if (f.stop && g >= f.stop) return {ok:false}; // terapia interrotta
   if (f.inizio && g < f.inizio) return {ok:false};
   if (!f.fine) return {ok:true, rif:f.inizio};
   if (!f.inizio) return {ok: g <= f.fine};
@@ -364,7 +365,7 @@ function inPeriodo(f, g){
   if (p > 0){ const ciclo = len + p, pos = d % ciclo; return {ok: pos < len, rif: sposta(g, -pos), pos, len, ciclo}; }
   return {ok: g <= f.fine, rif: f.inizio, pos: d, len};
 }
-function terminato(f){ return !!(f.fine && !(Number(f.pausa) > 0) && f.fine < iso(new Date())); }
+function terminato(f){ const oggi = iso(new Date()); return !!((f.stop && f.stop <= oggi) || (f.fine && !(Number(f.pausa) > 0) && f.fine < oggi)); }
 function previsto(f, g){
   const fr = f.frequenza || 'giornaliera';
   if (fr === 'bisogno') return false;
@@ -377,6 +378,7 @@ function previsto(f, g){
 function breveData(g){ return dt(g).toLocaleDateString('it-IT', {day:'numeric', month:'short'}); }
 function descrDurata(f){
   const oggi = iso(new Date()), p = Number(f.pausa) || 0;
+  if (f.stop && f.stop <= oggi) return `Interrotta il ${breveData(f.stop)}`;
   if (f.inizio && f.inizio > oggi) return `Inizia il ${breveData(f.inizio)}` + (f.fine ? `, fino al ${breveData(f.fine)}` : '');
   if (!f.fine) return '';
   if (!p) return f.fine < oggi ? `Terminata il ${breveData(f.fine)}` : `Fino al ${breveData(f.fine)}`;
@@ -587,8 +589,8 @@ function vistaOggi(){
         : s.modo==='saltata' ? `<div class="d arancio">Non presa${da?', segnato da '+da:''} alle ${hhmm(s.ts)}</div>`
         : s.modo==='sola' ? `<div class="d verde">Presa da sola${da?', segnato da '+da:''} alle ${hhmm(s.ts)}</div>`
         : `<div class="d verde">Data${da?' da '+da:''} alle ${hhmm(s.ts)}</div>`;
-      h += `<div class="riga ${s?'fatta':''}">${pill(x.fid)}<div class="testo"><div class="n">${esc(x.f.nome)}</div>${det}${svgGenerico(x.f)}${s ? '' : ultimoGiorno(x.f, giorno)}</div>
-        <button class="spunta ${s?(s.modo==='saltata'?'fatto saltata':'fatto'):''} ${rit?'ritardo':''}" onclick="${s?`annulla('${x.fid}','${x.ora}')`:`segna('${x.fid}','${x.ora}')`}" aria-label="${s?'Annulla dose':'Segna dose'}">
+      h += `<div class="riga tap ${s?'fatta':''}" onclick="apriFarmaco('${x.fid}')">${pill(x.fid)}<div class="testo"><div class="n">${esc(x.f.nome)}</div>${det}${svgGenerico(x.f)}${s ? '' : ultimoGiorno(x.f, giorno)}</div>
+        <button class="spunta ${s?(s.modo==='saltata'?'fatto saltata':'fatto'):''} ${rit?'ritardo':''}" onclick="event.stopPropagation(); ${s?`annulla('${x.fid}','${x.ora}')`:`segna('${x.fid}','${x.ora}')`}" aria-label="${s?'Annulla dose':'Segna dose'}">
         <i class="${ultimaSpunta===k?'pop':''}">${s?.modo==='saltata'?svgX:svgCheck}</i></button></div>`;
     });
     h += `</div></div>`;
@@ -601,8 +603,8 @@ function vistaOggi(){
       const prese = Object.entries(somm).filter(([,s]) => s.bisogno && s.fid===fid).sort((a,b)=>a[1].ts-b[1].ts);
       const max = num(f.maxGiorno), n = prese.length;
       const info = max ? `${n} di ${max} al massimo${f.dose?' · '+esc(f.dose):''}` : (f.dose ? esc(f.dose) : (n ? `${n} ${n===1?'volta':'volte'}` : 'Nessuna dose registrata'));
-      h += `<div class="riga">${pill(fid)}<div class="testo"><div class="n">${esc(f.nome)}</div><div class="d ${max && n>=max?'arancio':''}">${info}</div></div>
-        <button class="btn-bisogno" onclick="segnaBisogno('${fid}')">Registra</button></div>`;
+      h += `<div class="riga tap" onclick="apriFarmaco('${fid}')">${pill(fid)}<div class="testo"><div class="n">${esc(f.nome)}</div><div class="d ${max && n>=max?'arancio':''}">${info}</div></div>
+        <button class="btn-bisogno" onclick="event.stopPropagation(); segnaBisogno('${fid}')">Registra</button></div>`;
       prese.forEach(([k,s]) => {
         const da = s.chi && s.chi!=='—' ? ' da '+esc(s.chi) : '';
         h += `<div class="riga sotto"><div class="testo"><div class="d verde">${s.modo==='sola' ? 'Presa da sola, segnato'+da : 'Data'+da} alle ${s.ora}</div></div>
@@ -845,6 +847,7 @@ function apriFarmaco(fid){
       <div class="f-riga"><label for="fFine">Fino al</label><input type="date" class="dx" id="fFine" value="${f.fine || ''}" onchange="aggiornaDurata('fine')"></div>
       <div class="f-riga"><label for="fPausa">Poi pausa di (giorni)</label><input class="num" id="fPausa" inputmode="numeric" placeholder="Nessuna" value="${f.pausa || ''}" oninput="aggiornaDurata('pausa')"></div>
     </div>
+    <div class="f-gruppo"><button class="f-riga azione" style="width:100%" onclick="togliDate()">Togli le date</button></div>
     <p class="f-nota" id="fDurataNota"></p>
     <div id="boxOrari">
       <div class="f-label">Orari</div>
@@ -862,6 +865,10 @@ function apriFarmaco(fid){
     <div class="f-label">Colore</div>
     <div class="f-gruppo"><div class="colori" id="fColori">${COLORI.map(c=>`<button style="background:${c}" data-c="${c}" class="${c===coloreSel?'sel':''}" onclick="scegliColore('${c}')" aria-label="Colore"></button>`).join('')}</div></div>
     <div class="f-gruppo"><div class="f-riga"><label for="fAttivo">In terapia</label><input type="checkbox" class="switch" id="fAttivo" ${f.attivo!==false?'checked':''}></div></div>
+    ${fid ? (terminato(f)
+      ? `<div class="f-gruppo"><button class="f-riga azione" style="width:100%;justify-content:center" onclick="riprendiTerapia('${fid}')">Riprendi la terapia</button></div>`
+      : `<div class="f-gruppo"><button class="f-riga" style="width:100%;justify-content:center;color:var(--orange)" onclick="interrompiTerapia('${fid}')">Interrompi la terapia</button></div>
+         <p class="f-nota">Da oggi non compare più in Oggi. Le dosi già segnate restano nello storico e potete riprenderla quando volete.</p>`) : ''}
     ${fid?`<div class="f-gruppo"><button class="f-riga distruttiva" style="width:100%" onclick="eliminaFarmaco('${fid}')">Elimina farmaco</button></div>`:''}
   </div>`);
   aggiornaFreqUI(); aggiornaDurata();
@@ -885,6 +892,26 @@ function aggiornaDurata(origine){
   else t = ini.value ? `Dal ${lunga(ini.value)}, senza data di fine.` : 'Senza date: la terapia vale sempre.';
   if (p > 0 && !fi.value) t += ' La pausa serve solo se c\'è una data di fine.';
   document.getElementById('fDurataNota').textContent = t;
+}
+function togliDate(){
+  ['fInizio','fGiorni','fFine','fPausa'].forEach(id => document.getElementById(id).value = '');
+  aggiornaDurata();
+}
+function interrompiTerapia(fid){
+  const f = farmaci[fid]; if (!f) return;
+  if (!confirm(`Interrompere la terapia con ${f.nome} da oggi?\n\nNon comparirà più in Oggi. Le dosi già segnate restano e potete riprenderla quando volete.`)) return;
+  PR().child('farmaci/' + fid).update({stop: iso(new Date()), modificatoDa: chi || '—', modificatoIl: Date.now()});
+  chiudi();
+}
+function riprendiTerapia(fid){
+  const f = farmaci[fid]; if (!f) return;
+  if (!confirm(`Riprendere la terapia con ${f.nome} da oggi?`)) return;
+  const upd = {stop: null, modificatoDa: chi || '—', modificatoIl: Date.now()};
+  if (f.fine && f.fine < iso(new Date())){ upd.fine = null; upd.pausa = null; upd.inizio = iso(new Date()); }
+  if (f.inizio && f.inizio > iso(new Date())) upd.inizio = iso(new Date());
+  if (f.frequenza === 'ogniN' && !upd.inizio) upd.inizio = iso(new Date());
+  PR().child('farmaci/' + fid).update(upd);
+  chiudi();
 }
 function scegliFreq(v){ freqSel = v; aggiornaFreqUI(); }
 function aggiornaFreqUI(){
@@ -929,6 +956,7 @@ function salvaFarmaco(fid){
     modificatoDa: chi || '—', modificatoIl: Date.now()
   };
   dati.generico = document.getElementById('fGenerico').value.trim();
+  dati.stop = fid ? (farmaci[fid]?.stop || null) : null;
   dati.creatoIl = fid ? (farmaci[fid]?.creatoIl || farmaci[fid]?.modificatoIl || Date.now()) : Date.now();
   dati.miniatura = fotoRimossa ? null : (fotoNuova ? fotoMini : (fid ? farmaci[fid]?.miniatura || null : null));
   const ref = fid ? PR().child('farmaci/'+fid) : PR().child('farmaci').push();
