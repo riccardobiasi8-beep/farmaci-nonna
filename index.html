@@ -354,13 +354,42 @@ const svgPillola = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" 
 const svgCheck = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
 const svgChev = `<svg class="chev" width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l6 6-6 6"/></svg>`;
 const svgX = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
+function diffGiorni(a, b){ return Math.round((dt(b) - dt(a)) / 864e5); }
+// Periodo di terapia: inizio, fine ed eventuale pausa ciclica (es. 21 giorni sì, 15 di pausa, poi riprende)
+function inPeriodo(f, g){
+  if (f.inizio && g < f.inizio) return {ok:false};
+  if (!f.fine) return {ok:true, rif:f.inizio};
+  if (!f.inizio) return {ok: g <= f.fine};
+  const len = diffGiorni(f.inizio, f.fine) + 1, d = diffGiorni(f.inizio, g), p = Number(f.pausa) || 0;
+  if (p > 0){ const ciclo = len + p, pos = d % ciclo; return {ok: pos < len, rif: sposta(g, -pos), pos, len, ciclo}; }
+  return {ok: g <= f.fine, rif: f.inizio, pos: d, len};
+}
+function terminato(f){ return !!(f.fine && !(Number(f.pausa) > 0) && f.fine < iso(new Date())); }
 function previsto(f, g){
   const fr = f.frequenza || 'giornaliera';
   if (fr === 'bisogno') return false;
   if (f.creatoIl && g < iso(new Date(f.creatoIl))) return false; // prima che il farmaco fosse inserito
-  if (fr === 'ogniN'){ const n = Math.max(2, Number(f.ogniN)||2); const diff = Math.round((dt(g) - dt(f.inizio || g)) / 864e5); return diff >= 0 && diff % n === 0; }
+  const per = inPeriodo(f, g); if (!per.ok) return false;
+  if (fr === 'ogniN'){ const n = Math.max(2, Number(f.ogniN)||2); const diff = diffGiorni(per.rif || f.inizio || g, g); return diff >= 0 && diff % n === 0; }
   if (fr === 'settimana') return (f.giorniSett || []).includes((dt(g).getDay()+6)%7);
   return true;
+}
+function breveData(g){ return dt(g).toLocaleDateString('it-IT', {day:'numeric', month:'short'}); }
+function descrDurata(f){
+  const oggi = iso(new Date()), p = Number(f.pausa) || 0;
+  if (f.inizio && f.inizio > oggi) return `Inizia il ${breveData(f.inizio)}` + (f.fine ? `, fino al ${breveData(f.fine)}` : '');
+  if (!f.fine) return '';
+  if (!p) return f.fine < oggi ? `Terminata il ${breveData(f.fine)}` : `Fino al ${breveData(f.fine)}`;
+  const per = inPeriodo(f, oggi);
+  if (per.ok) return `Ciclo: giorno ${per.pos + 1} di ${per.len}, poi ${p} giorni di pausa`;
+  const d = diffGiorni(f.inizio, oggi) % per.ciclo || 0, len = diffGiorni(f.inizio, f.fine) + 1;
+  return `In pausa, riprende il ${breveData(sposta(oggi, (len + p) - d))}`;
+}
+function ultimoGiorno(f, g){
+  if (!f.fine) return '';
+  const per = inPeriodo(f, g);
+  if (!per.ok || per.len == null || per.pos !== per.len - 1) return '';
+  return `<div class="d" style="color:var(--orange);font-weight:500">Ultimo giorno${Number(f.pausa) > 0 ? `, poi ${f.pausa} giorni di pausa` : ' di terapia'}</div>`;
 }
 function descrFreq(f){
   const fr = f.frequenza || 'giornaliera';
@@ -505,7 +534,7 @@ function vistaOggi(){
     <button class="btn-blu" onclick="vai('farmaci');apriFarmaco()">Aggiungi farmaco</button></div>`;
 
   const dosi = dosiDelGiorno();
-  const alBisogno = Object.entries(farmaci).filter(([,f]) => f.attivo!==false && f.frequenza==='bisogno').sort((a,b)=>a[1].nome.localeCompare(b[1].nome));
+  const alBisogno = Object.entries(farmaci).filter(([,f]) => f.attivo!==false && f.frequenza==='bisogno' && inPeriodo(f, giorno).ok).sort((a,b)=>a[1].nome.localeCompare(b[1].nome));
 
   // Riepilogo
   const valide = dosi.filter(x => !x.orfano);
@@ -558,7 +587,7 @@ function vistaOggi(){
         : s.modo==='saltata' ? `<div class="d arancio">Non presa${da?', segnato da '+da:''} alle ${hhmm(s.ts)}</div>`
         : s.modo==='sola' ? `<div class="d verde">Presa da sola${da?', segnato da '+da:''} alle ${hhmm(s.ts)}</div>`
         : `<div class="d verde">Data${da?' da '+da:''} alle ${hhmm(s.ts)}</div>`;
-      h += `<div class="riga ${s?'fatta':''}">${pill(x.fid)}<div class="testo"><div class="n">${esc(x.f.nome)}</div>${det}${svgGenerico(x.f)}</div>
+      h += `<div class="riga ${s?'fatta':''}">${pill(x.fid)}<div class="testo"><div class="n">${esc(x.f.nome)}</div>${det}${svgGenerico(x.f)}${s ? '' : ultimoGiorno(x.f, giorno)}</div>
         <button class="spunta ${s?(s.modo==='saltata'?'fatto saltata':'fatto'):''} ${rit?'ritardo':''}" onclick="${s?`annulla('${x.fid}','${x.ora}')`:`segna('${x.fid}','${x.ora}')`}" aria-label="${s?'Annulla dose':'Segna dose'}">
         <i class="${ultimaSpunta===k?'pop':''}">${s?.modo==='saltata'?svgX:svgCheck}</i></button></div>`;
     });
@@ -587,17 +616,18 @@ function vistaOggi(){
 
 function vistaFarmaci(){
   let h = `<h1 class="titolo">Farmaci</h1>`;
-  const lista = Object.entries(farmaci).sort((a,b)=>(a[1].attivo===false)-(b[1].attivo===false) || a[1].nome.localeCompare(b[1].nome));
+  const fermo = f => f.attivo===false || terminato(f);
+  const lista = Object.entries(farmaci).sort((a,b)=>fermo(a[1])-fermo(b[1]) || a[1].nome.localeCompare(b[1].nome));
   if (!lista.length) return h + `<div class="vuoto"><div class="big">${svgPillola.replace(/#fff/g,'currentColor').replace('18" height="18','32" height="32')}</div>
     <h3>Nessun farmaco</h3><p>Aggiungi il primo farmaco con nome, dose e orari.</p>
     <button class="btn-blu" onclick="apriFarmaco()">Aggiungi farmaco</button></div>`;
-  h += `<p class="sottotitolo">${lista.filter(([,f])=>f.attivo!==false).length} in terapia</p>`;
-  const attivi = lista.filter(([,f])=>f.attivo!==false), sospesi = lista.filter(([,f])=>f.attivo===false);
-  const riga = ([fid,f]) => `<div class="riga tap" onclick="apriFarmaco('${fid}')" style="${f.attivo===false?'opacity:.5':''}">${pill(fid)}
-    <div class="testo"><div class="n">${esc(f.nome)}</div><div class="d">${descrFreq(f)}${f.frequenza!=='bisogno' && (f.orari||[]).length ? ', '+f.orari.join(' ') : ''}${f.dose?' · '+esc(f.dose):''}</div>${svgGenerico(f)}${f.note ? `<div class="d" style="color:var(--label)">${esc(f.note)}</div>` : ''}</div>
+  h += `<p class="sottotitolo">${lista.filter(([,f])=>!fermo(f)).length} in terapia</p>`;
+  const attivi = lista.filter(([,f])=>!fermo(f)), sospesi = lista.filter(([,f])=>fermo(f));
+  const riga = ([fid,f]) => `<div class="riga tap" onclick="apriFarmaco('${fid}')" style="${fermo(f)?'opacity:.5':''}">${pill(fid)}
+    <div class="testo"><div class="n">${esc(f.nome)}</div><div class="d">${descrFreq(f)}${f.frequenza!=='bisogno' && (f.orari||[]).length ? ', '+f.orari.join(' ') : ''}${f.dose?' · '+esc(f.dose):''}</div>${descrDurata(f) ? `<div class="d" style="color:var(--blue)">${esc(descrDurata(f))}</div>` : ''}${svgGenerico(f)}${f.note ? `<div class="d" style="color:var(--label)">${esc(f.note)}</div>` : ''}</div>
     ${inScorta(f)?`<span class="tag ${scortaBassa(f)?'basso':''}">${f.scorta}</span>`:''}${svgChev}</div>`;
   if (attivi.length) h += `<div class="sezione"><div class="gruppo">${attivi.map(riga).join('')}</div></div>`;
-  if (sospesi.length) h += `<div class="sezione"><div class="sez-head"><h4 style="font-size:17px">Sospesi</h4></div><div class="gruppo">${sospesi.map(riga).join('')}</div></div>`;
+  if (sospesi.length) h += `<div class="sezione"><div class="sez-head"><h4 style="font-size:17px">Sospesi o terminati</h4></div><div class="gruppo">${sospesi.map(riga).join('')}</div></div>`;
   return h;
 }
 
@@ -798,9 +828,8 @@ function apriFarmaco(fid){
     <div id="boxOgniN">
       <div class="f-gruppo">
         <div class="f-riga"><label for="fOgniN">Ogni quanti giorni</label><input class="num" id="fOgniN" inputmode="numeric" value="${f.ogniN??2}"></div>
-        <div class="f-riga"><label for="fInizio">A partire da</label><input type="date" id="fInizio" value="${f.inizio||iso(new Date())}"></div>
       </div>
-      <p class="f-nota">2 vuol dire un giorno sì e uno no, contando dal giorno indicato.</p>
+      <p class="f-nota">2 vuol dire un giorno sì e uno no, contando dal giorno di inizio qui sotto.</p>
     </div>
     <div id="boxSett">
       <div class="f-gruppo"><div class="giorni-sett">${GIORNI.map((g,i) => `<button data-g="${i}" class="${giorniSel.includes(i)?'sel':''}" onclick="toggleGiorno(${i})">${g}</button>`).join('')}</div></div>
@@ -809,6 +838,14 @@ function apriFarmaco(fid){
       <div class="f-gruppo"><div class="f-riga"><label for="fMax">Massimo al giorno</label><input class="num" id="fMax" inputmode="numeric" value="${f.maxGiorno??''}" placeholder="—"></div></div>
       <p class="f-nota">Non ha orari: lo registrate solo quando lo prende. Se si supera il massimo, l'app avvisa prima di registrare.</p>
     </div>
+    <div class="f-label">Durata della terapia</div>
+    <div class="f-gruppo">
+      <div class="f-riga"><label for="fInizio">Inizio</label><input type="date" class="dx" id="fInizio" value="${f.inizio || (fid ? '' : iso(new Date()))}" onchange="aggiornaDurata('inizio')"></div>
+      <div class="f-riga"><label for="fGiorni">Per quanti giorni</label><input class="num" id="fGiorni" inputmode="numeric" placeholder="Sempre" value="${f.inizio && f.fine ? diffGiorni(f.inizio, f.fine) + 1 : ''}" oninput="aggiornaDurata('giorni')"></div>
+      <div class="f-riga"><label for="fFine">Fino al</label><input type="date" class="dx" id="fFine" value="${f.fine || ''}" onchange="aggiornaDurata('fine')"></div>
+      <div class="f-riga"><label for="fPausa">Poi pausa di (giorni)</label><input class="num" id="fPausa" inputmode="numeric" placeholder="Nessuna" value="${f.pausa || ''}" oninput="aggiornaDurata('pausa')"></div>
+    </div>
+    <p class="f-nota" id="fDurataNota"></p>
     <div id="boxOrari">
       <div class="f-label">Orari</div>
       <div class="f-gruppo"><div id="fOrari">${(f.orari||[]).map(rigaOrario).join('')}</div>
@@ -827,8 +864,27 @@ function apriFarmaco(fid){
     <div class="f-gruppo"><div class="f-riga"><label for="fAttivo">In terapia</label><input type="checkbox" class="switch" id="fAttivo" ${f.attivo!==false?'checked':''}></div></div>
     ${fid?`<div class="f-gruppo"><button class="f-riga distruttiva" style="width:100%" onclick="eliminaFarmaco('${fid}')">Elimina farmaco</button></div>`:''}
   </div>`);
-  aggiornaFreqUI();
+  aggiornaFreqUI(); aggiornaDurata();
   if (!fid) setTimeout(()=>document.getElementById('fNome').focus(), 400);
+}
+function aggiornaDurata(origine){
+  const ini = document.getElementById('fInizio'), gg = document.getElementById('fGiorni'), fi = document.getElementById('fFine'), pa = document.getElementById('fPausa');
+  if (!ini) return;
+  const n = Math.round(num(gg.value) || 0);
+  if (origine === 'giorni'){ if (n > 0 && ini.value) fi.value = sposta(ini.value, n - 1); else if (!gg.value) fi.value = ''; }
+  if ((origine === 'fine' || origine === 'inizio') && ini.value && fi.value) gg.value = Math.max(1, diffGiorni(ini.value, fi.value) + 1);
+  if (origine === 'fine' && !fi.value) gg.value = '';
+  const p = Math.round(num(pa.value) || 0), lunga = g => dt(g).toLocaleDateString('it-IT', {day:'numeric', month:'long'});
+  let t;
+  if (fi.value && ini.value && fi.value < ini.value) t = 'Attenzione: la fine è prima dell\'inizio.';
+  else if (fi.value && ini.value){
+    const len = diffGiorni(ini.value, fi.value) + 1;
+    t = `Dal ${lunga(ini.value)} al ${lunga(fi.value)}, ${len === 1 ? '1 giorno' : len + ' giorni'}` +
+      (p > 0 ? `. Poi ${p} giorni di pausa e riprende dal ${lunga(sposta(fi.value, p + 1))}, ripetendo il ciclo.` : ', poi la terapia finisce.');
+  } else if (fi.value) t = 'Indica anche la data di inizio.';
+  else t = ini.value ? `Dal ${lunga(ini.value)}, senza data di fine.` : 'Senza date: la terapia vale sempre.';
+  if (p > 0 && !fi.value) t += ' La pausa serve solo se c\'è una data di fine.';
+  document.getElementById('fDurataNota').textContent = t;
 }
 function scegliFreq(v){ freqSel = v; aggiornaFreqUI(); }
 function aggiornaFreqUI(){
@@ -849,6 +905,9 @@ function salvaFarmaco(fid){
   const nome = document.getElementById('fNome').value.trim();
   if (!nome){ document.getElementById('fNome').focus(); return; }
   const orari = [...document.querySelectorAll('#fOrari input')].map(i=>i.value).filter(Boolean);
+  const vIni = document.getElementById('fInizio').value, vFine = document.getElementById('fFine').value;
+  if (vFine && !vIni){ alert('Indica la data di inizio della terapia.'); return; }
+  if (vFine && vFine < vIni){ alert('La data di fine è prima di quella di inizio.'); return; }
   if (freqSel==='settimana' && !giorniSel.length){ alert('Scegli almeno un giorno della settimana.'); return; }
   if (freqSel!=='bisogno' && !orari.length){ alert('Aggiungi almeno un orario.'); return; }
   const dati = {
@@ -856,7 +915,9 @@ function salvaFarmaco(fid){
     frequenza: freqSel,
     orari: freqSel==='bisogno' ? [] : [...new Set(orari)].sort(),
     ogniN: freqSel==='ogniN' ? Math.max(2, Math.round(num(document.getElementById('fOgniN').value) ?? 2)) : null,
-    inizio: freqSel==='ogniN' ? (document.getElementById('fInizio').value || iso(new Date())) : null,
+    inizio: document.getElementById('fInizio').value || (freqSel==='ogniN' ? iso(new Date()) : null),
+    fine: document.getElementById('fFine').value || null,
+    pausa: document.getElementById('fFine').value ? (Math.round(num(document.getElementById('fPausa').value) || 0) || null) : null,
     giorniSett: freqSel==='settimana' ? [...giorniSel].sort() : null,
     maxGiorno: freqSel==='bisogno' ? num(document.getElementById('fMax').value) : null,
     scorta: num(document.getElementById('fScorta').value),
