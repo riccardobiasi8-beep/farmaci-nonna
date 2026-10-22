@@ -255,6 +255,48 @@ main{max-width:640px;margin:0 auto;padding:0 16px}
 #visore .chiudi{position:fixed;z-index:2;top:calc(env(safe-area-inset-top,0px) + 10px);right:16px;color:#0A84FF;font-size:17px;font-weight:600;padding:8px}
 .sheet-nav .dx:disabled{color:var(--label3)}
 .spinner-mini{color:var(--label2);animation:gira .9s steps(8) infinite;flex:none}
+/* Oggi: anelli in stile Fitness */
+.hero{background:#000;color:#fff;border-radius:22px;padding:18px 18px 14px;margin-bottom:16px;box-shadow:0 10px 30px rgba(0,0,0,.18)}
+@media (prefers-color-scheme:dark){.hero{background:#1C1C1E;box-shadow:none}}
+.hero-top{display:flex;align-items:center;gap:18px}
+.hero-anelli{flex:none;filter:drop-shadow(0 0 10px rgba(255,45,85,.18))}
+.hero-dati{display:flex;flex-direction:column;gap:7px;min-width:0}
+.hd span{display:block;font-size:13px;font-weight:600;letter-spacing:.01em}
+.hd b{font-size:27px;font-weight:700;line-height:1.05;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.hd b small{font-size:16px;font-weight:600;opacity:.55;margin-left:1px}
+.hero-msg{margin-top:14px;padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.09);font-size:15px;font-weight:500;display:flex;align-items:center;gap:9px;line-height:1.3}
+.hero-msg.rosso{background:rgba(255,59,48,.2);color:#FF8A80}
+.hero-msg.verde{background:rgba(52,199,89,.18);color:#7BE495}
+.pallino{width:8px;height:8px;border-radius:50%;background:#FF453A;flex:none;animation:pulsa 1.6s ease-in-out infinite}
+.pallino.verde{background:#30D158;animation:none}
+.pallino.blu{background:#0A84FF;animation:none}
+@keyframes pulsa{50%{opacity:.35;transform:scale(.8)}}
+.hero-leg{margin-top:10px;font-size:11.5px;color:rgba(255,255,255,.45);text-align:center}
+.anelli.anima .arco{animation:riempi 1.1s cubic-bezier(.2,.8,.2,1) both}
+@keyframes riempi{from{stroke-dashoffset:var(--c)}}
+/* Calendario con anellini */
+.gg-r{position:relative;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-style:normal}
+.gg-r .mini-anello{position:absolute;inset:0}
+.gg b{width:30px;height:30px;font-size:16px}
+/* Widget */
+.widgets{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:22px}
+.widgets.uno{grid-template-columns:1fr}
+.widget{background:var(--card);border-radius:18px;padding:13px 14px;min-width:0}
+.widget:active{transform:scale(.98)}
+.w-ic{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:9px}
+.w-tit{font-size:13px;color:var(--label2);font-weight:500}
+.w-val{font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.w-sub{font-size:13px;color:var(--label2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Intestazione fasce */
+.fascia-h{align-items:center}
+.fascia-h .mini-anello{flex:none;margin-right:2px}
+.fascia-h em{font-style:normal;font-size:13px;font-weight:600;color:var(--label2);background:var(--fill);border-radius:10px;padding:2px 8px}
+.fascia-h em.ok{color:var(--green);background:color-mix(in srgb,var(--green) 15%,transparent)}
+.fascia-h em.rit{color:var(--red);background:color-mix(in srgb,var(--red) 13%,transparent)}
+.tutte{margin-left:auto;color:var(--blue);font-size:15px;font-weight:600;padding:4px 2px}
+.bis-anello{position:relative;width:30px;height:30px;flex:none;display:flex;align-items:center;justify-content:center}
+.bis-anello svg{position:absolute;inset:0}
+.bis-anello b{font-size:12px;font-weight:700}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -326,6 +368,7 @@ const ROOT = db.ref('nonna');
 
 // ====== STATO ======
 let farmaci = {}, somm = {}, note = {}, visite = {};
+let settSomm = {}, settLun = null; const refsSett = [];
 let pazienti = {}, paz = localStorage.getItem('paziente') || 'nonna', altri = {}, modificaPaz = false;
 function PR(pid = paz){ return ROOT.child('dati/' + pid); }
 let tab = 'oggi';
@@ -428,11 +471,12 @@ function ascoltaPaziente(){
   ascolta(PR().child('farmaci'), s => { farmaci = s.val() || {}; farmaciCaricati = true; render(); provaChiudiSplash(); }, refsPaz);
   ascolta(PR().child('note'),    s => { note = s.val() || {}; render(); }, refsPaz);
   ascolta(PR().child('visite'),  s => { visite = s.val() || {}; render(); }, refsPaz);
-  ascoltaGiorno();
+  ascoltaGiorno(true);
 }
-function ascoltaGiorno(){
+function ascoltaGiorno(nuovoPaziente){
   stacca(refsGiorno); somm = {};
   ascolta(PR().child('somministrazioni/' + giorno), s => { somm = s.val() || {}; render(); }, refsGiorno);
+  ascoltaSettimana(nuovoPaziente);
 }
 // Dosi di oggi di tutti i pazienti, per il pallino rosso sul selettore
 function ascoltaAltri(){
@@ -515,6 +559,77 @@ function inRitardo(ora, g = giorno){
   return n.getHours()*60+n.getMinutes() > h*60+m+30;
 }
 
+// ====== ANELLI (stile Fitness) ======
+const ANELLI = [
+  {id:'dosi',  c1:'#FF2D55', c2:'#FF6B8B', etich:'Dosi'},
+  {id:'punt',  c1:'#A6FF00', c2:'#4CD964', etich:'Puntuali'},
+  {id:'sett',  c1:'#00E1FF', c2:'#1EA7FF', etich:'Settimana'}
+];
+let anelliVisti = '';
+function svgAnelli(valori, size, anima){
+  const sw = size * .115, gap = sw * .22, c = size / 2;
+  let h = `<svg class="anelli ${anima ? 'anima' : ''}" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true"><defs>`;
+  ANELLI.forEach(a => h += `<linearGradient id="gr-${a.id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${a.c1}"/><stop offset="1" stop-color="${a.c2}"/></linearGradient>`);
+  h += `</defs>`;
+  valori.forEach((p, i) => {
+    const a = ANELLI[i], r = c - sw/2 - i*(sw+gap), C = 2*Math.PI*r, v = Math.max(0, Math.min(1, p || 0));
+    h += `<circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${a.c1}" stroke-opacity=".22" stroke-width="${sw}"/>`;
+    if (v > 0) h += `<circle class="arco" cx="${c}" cy="${c}" r="${r}" fill="none" stroke="url(#gr-${a.id})" stroke-width="${sw}" stroke-linecap="round"
+      stroke-dasharray="${C.toFixed(2)}" stroke-dashoffset="${(C*(1-v)).toFixed(2)}" style="--c:${C.toFixed(2)};animation-delay:${i*.12}s" transform="rotate(-90 ${c} ${c})"/>`;
+  });
+  return h + `</svg>`;
+}
+function miniAnello(p, size, colore, vuoto){
+  const sw = size * .13, r = size/2 - sw/2, C = 2*Math.PI*r, v = Math.max(0, Math.min(1, p || 0));
+  return `<svg class="mini-anello" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true">
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${vuoto ? 'var(--fill)' : colore}" stroke-opacity="${vuoto ? 1 : .2}" stroke-width="${sw}"/>
+    ${v > 0 ? `<circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${colore}" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${C.toFixed(2)}" stroke-dashoffset="${(C*(1-v)).toFixed(2)}" transform="rotate(-90 ${size/2} ${size/2})"/>` : ''}</svg>`;
+}
+function statsGiorno(g, sg){
+  const d = dosiPreviste(g); let date = 0, salt = 0, punt = 0;
+  d.forEach(x => {
+    const r = sg && sg[chiave(x.fid, x.ora)]; if (!r) return;
+    if (r.modo === 'saltata'){ salt++; return; }
+    date++;
+    const [hh, mm] = x.ora.split(':').map(Number), prev = dt(g); prev.setHours(hh, mm, 0, 0);
+    if (Math.abs(r.ts - prev.getTime()) <= 60*60000) punt++;
+  });
+  return {tot: d.length, date, salt, punt};
+}
+function traQuanto(ora){
+  const [h, m] = ora.split(':').map(Number), n = new Date(), min = h*60 + m - (n.getHours()*60 + n.getMinutes());
+  if (min <= 0) return 'adesso';
+  if (min < 60) return `tra ${min} min`;
+  const hh = Math.floor(min/60), mm = min % 60;
+  return `tra ${hh} h${mm ? ' ' + mm + ' min' : ''}`;
+}
+// Settimana visibile: ascolta i 7 giorni per gli anellini del calendario
+function lunediDi(g){ return sposta(g, -((dt(g).getDay()+6)%7)); }
+function ascoltaSettimana(forza){
+  const lun = lunediDi(giorno);
+  if (!forza && lun === settLun && refsSett.length) return;
+  settLun = lun; stacca(refsSett); settSomm = {};
+  for (let i = 0; i < 7; i++){
+    const g = sposta(lun, i);
+    ascolta(PR().child('somministrazioni/' + g), s => { settSomm[g] = s.val() || {}; render(); }, refsSett);
+  }
+}
+function segnaTutte(ora){
+  if (!chi) { chiediNome(() => segnaTutte(ora)); return; }
+  const n = dosiDelGiorno().filter(x => x.ora === ora && !x.orfano && !somm[chiave(x.fid, x.ora)]).length;
+  menuChi(`${n} farmaci delle ${ora}`, [
+    ["Le ho date io", `registraTutte('${ora}','data')`],
+    ["Le ha prese da sola", `registraTutte('${ora}','sola')`],
+    ["Non le ha prese", `registraTutte('${ora}','saltata')`, 'rosso']]);
+}
+function registraTutte(ora, modo){
+  chiudi(); vibra();
+  dosiDelGiorno().filter(x => x.ora === ora && !x.orfano && !somm[chiave(x.fid, x.ora)]).forEach(x => {
+    PR().child(`somministrazioni/${giorno}/${chiave(x.fid, x.ora)}`).set({fid:x.fid, ora:x.ora, nome:x.f.nome||'', chi, modo, ts:Date.now()});
+    if (modo !== 'saltata') aggiornaScorta(x.fid, -(num(x.f.perDose) ?? 1));
+  });
+}
+
 function vistaOggi(){
   const oggi = iso(new Date());
   const titolo = giorno===oggi ? 'Oggi' : giorno===sposta(oggi,-1) ? 'Ieri' : giorno===sposta(oggi,1) ? 'Domani'
@@ -522,12 +637,14 @@ function vistaOggi(){
   const sotto = dt(giorno).toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'});
   let h = `<h1 class="titolo">${titolo}</h1><p class="sottotitolo">${sotto}</p>`;
 
-  // Settimana
-  const d = dt(giorno), lun = sposta(giorno, -((d.getDay()+6)%7));
+  // Settimana con anellini
+  const lun = lunediDi(giorno);
   h += `<div class="settimana"><button class="freccia" onclick="scegliGiorno(sposta(giorno,-7))" aria-label="Settimana precedente"><svg width="10" height="16" viewBox="0 0 10 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2L2 8l6 6"/></svg></button>`;
   for (let i=0;i<7;i++){
-    const g = sposta(lun,i);
-    h += `<button class="gg ${g===giorno?'sel':''} ${g===oggi?'oggi':''}" onclick="scegliGiorno('${g}')"><span>${GIORNI[i]}</span><b>${dt(g).getDate()}</b></button>`;
+    const g = sposta(lun,i), st = statsGiorno(g, settSomm[g]);
+    const anello = st.tot ? miniAnello(st.date/st.tot, 40, '#FF2D55', g > oggi) : '';
+    h += `<button class="gg ${g===giorno?'sel':''} ${g===oggi?'oggi':''}" onclick="scegliGiorno('${g}')" aria-label="${dt(g).toLocaleDateString('it-IT',{weekday:'long',day:'numeric'})}">
+      <span>${GIORNI[i]}</span><i class="gg-r">${anello}<b>${dt(g).getDate()}</b></i></button>`;
   }
   h += `<button class="freccia" onclick="scegliGiorno(sposta(giorno,7))" aria-label="Settimana successiva"><svg width="10" height="16" viewBox="0 0 10 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2l6 6-6 6"/></svg></button></div>`;
 
@@ -537,46 +654,63 @@ function vistaOggi(){
 
   const dosi = dosiDelGiorno();
   const alBisogno = Object.entries(farmaci).filter(([,f]) => f.attivo!==false && f.frequenza==='bisogno' && inPeriodo(f, giorno).ok).sort((a,b)=>a[1].nome.localeCompare(b[1].nome));
-
-  // Riepilogo
   const valide = dosi.filter(x => !x.orfano);
+
+  // ===== Riquadro anelli =====
   if (valide.length){
-    const fatte = valide.filter(x => somm[chiave(x.fid,x.ora)]).length;
-    const saltate = valide.filter(x => somm[chiave(x.fid,x.ora)]?.modo==='saltata').length;
-    const tot = valide.length, C = 2*Math.PI*33, off = C*(1-fatte/tot);
+    const st = statsGiorno(giorno, somm);
+    let sDate = 0, sTot = 0;
+    for (let i = 0; i < 7; i++){ const g = sposta(lun, i); if (g > oggi) break; const x = g === giorno ? st : statsGiorno(g, settSomm[g]); sDate += x.date; sTot += x.tot; }
+    const pSett = sTot ? sDate/sTot : 0;
     const ritardi = valide.filter(x => !somm[chiave(x.fid,x.ora)] && inRitardo(x.ora));
-    const prossima = valide.find(x => !somm[chiave(x.fid,x.ora)] && !inRitardo(x.ora));
-    let titoloR, testoR, rosso = false;
-    if (fatte===tot){ titoloR = saltate ? 'Tutto segnato' : (giorno===oggi ? 'Tutto fatto per oggi' : 'Tutte le dosi date');
-      testoR = saltate ? `${saltate} ${saltate===1?'dose non presa':'dosi non prese'}` : `${tot} ${tot===1?'dose data':'dosi date'}`; rosso = saltate>0; }
-    else if (ritardi.length){ titoloR = `${fatte} di ${tot} dosi segnate`; rosso = true;
-      testoR = ritardi.length===1 ? `${ritardi[0].f.nome} delle ${ritardi[0].ora} non risulta data` : `${ritardi.length} dosi non risultano date`; }
-    else { titoloR = `${fatte} di ${tot} dosi segnate`; testoR = prossima ? `Prossima: ${prossima.f.nome} alle ${prossima.ora}` : ''; }
-    h += `<div class="riepilogo"><div class="anello"><svg width="76" height="76" viewBox="0 0 76 76">
-        <circle class="traccia" cx="38" cy="38" r="33"/><circle class="prog" cx="38" cy="38" r="33" stroke-dasharray="${C}" stroke-dashoffset="${off}"/></svg>
-        <div>${fatte===tot?`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`:Math.round(fatte/tot*100)+'%'}</div></div>
-      <div><h3>${esc(titoloR)}</h3><p class="${rosso?'rosso':''}">${esc(testoR)}</p></div></div>`;
+    const prossime = valide.filter(x => !somm[chiave(x.fid,x.ora)] && !inRitardo(x.ora));
+    const fatte = valide.filter(x => somm[chiave(x.fid,x.ora)]).length;
+    let msg, tono = '';
+    if (ritardi.length){ tono = 'rosso'; msg = ritardi.length === 1 ? `${ritardi[0].f.nome} delle ${ritardi[0].ora} non risulta data` : `${ritardi.length} dosi non risultano date`; }
+    else if (fatte === valide.length){ tono = 'verde'; msg = st.salt ? `Tutto segnato, ${st.salt === 1 ? '1 dose non presa' : st.salt + ' dosi non prese'}` : (giorno === oggi ? 'Tutto fatto per oggi' : 'Tutte le dosi date'); }
+    else if (prossime.length && giorno === oggi){ const pr = prossime[0], stesse = prossime.filter(x => x.ora === pr.ora).length;
+      msg = `Prossima alle ${pr.ora}, ${traQuanto(pr.ora)}: ${pr.f.nome}${stesse > 1 ? ` e altri ${stesse-1}` : ''}`; }
+    else msg = `${prossime.length} ${prossime.length === 1 ? 'dose' : 'dosi'} da dare`;
+    const chiaveAnim = paz + giorno; const anima = anelliVisti !== chiaveAnim; anelliVisti = chiaveAnim;
+    const voci = [
+      [ANELLI[0], `${st.date}<small>/${st.tot}</small>`],
+      [ANELLI[1], st.date ? `${st.punt}<small>/${st.date}</small>` : `–`],
+      [ANELLI[2], sTot ? `${Math.round(pSett*100)}<small>%</small>` : `–`]
+    ];
+    h += `<div class="hero">
+      <div class="hero-top">
+        <div class="hero-anelli">${svgAnelli([st.tot ? st.date/st.tot : 0, st.date ? st.punt/st.date : 0, pSett], 136, anima)}</div>
+        <div class="hero-dati">${voci.map(([a, v]) => `<div class="hd"><span style="color:${a.c1}">${a.etich}</span><b>${v}</b></div>`).join('')}</div>
+      </div>
+      <div class="hero-msg ${tono}">${tono === 'rosso' ? '<i class="pallino"></i>' : tono === 'verde' ? '<i class="pallino verde"></i>' : '<i class="pallino blu"></i>'}${esc(msg)}</div>
+      <p class="hero-leg">Dosi date oggi · date entro un'ora dall'orario · andamento della settimana</p>
+    </div>`;
   } else {
     h += `<div class="riepilogo"><div><h3>Nessuna dose a orario</h3><p>${alBisogno.length ? 'In questo giorno ci sono solo i farmaci al bisogno.' : 'Nessun farmaco previsto in questo giorno.'}</p></div></div>`;
   }
 
-  // Scorte basse
-  const bassi = Object.values(farmaci).filter(f => f.attivo!==false && scortaBassa(f));
-  if (bassi.length) h += `<div class="banner"><div class="ic" style="background:var(--orange)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M12 7v6M12 17h.01"/></svg></div>
-    <p>Da ricomprare: ${bassi.map(f=>`<b>${esc(f.nome)}</b> (${f.scorta} rimaste)`).join(', ')}</p></div>`;
-
-  // Visite nei prossimi 3 giorni
+  // ===== Avvisi come widget =====
+  const widget = [];
+  const bassi = Object.values(farmaci).filter(f => f.attivo!==false && !terminato(f) && scortaBassa(f));
+  if (bassi.length) widget.push(`<div class="widget tap" onclick="vai('farmaci')"><div class="w-ic" style="background:var(--orange)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/></svg></div>
+    <div class="w-tit">Da ricomprare</div><div class="w-val">${bassi.length === 1 ? esc(bassi[0].nome) : bassi.length + ' farmaci'}</div><div class="w-sub">${bassi.map(f => `${esc(f.nome)} ${f.scorta}`).join(', ')}</div></div>`);
   if (giorno === oggi){
-    const vicina = Object.values(visite).filter(v => v.data >= oggi && v.data <= sposta(oggi,3)).sort((a,b) => (a.data+(a.ora||'')).localeCompare(b.data+(b.ora||'')))[0];
-    if (vicina) h += `<div class="banner tap" onclick="vai('visite')"><div class="ic" style="background:var(--blue)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></div>
-      <p><b>${esc(quandoVisita(vicina))}: ${esc(vicina.titolo)}</b>${vicina.luogo ? ', ' + esc(vicina.luogo) : ''}</p></div>`;
+    const vicina = Object.values(visite).filter(v => v.data >= oggi && v.data <= sposta(oggi,7)).sort((a,b) => (a.data+(a.ora||'')).localeCompare(b.data+(b.ora||'')))[0];
+    if (vicina) widget.push(`<div class="widget tap" onclick="vai('visite')"><div class="w-ic" style="background:var(--blue)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></div>
+      <div class="w-tit">Prossima visita</div><div class="w-val">${esc(vicina.titolo)}</div><div class="w-sub">${esc(quandoVisita(vicina))}</div></div>`);
   }
+  if (widget.length) h += `<div class="widgets ${widget.length === 1 ? 'uno' : ''}">${widget.join('')}</div>`;
 
-  // Fasce orarie
+  // ===== Fasce orarie =====
   const gruppi = {};
   dosi.forEach(x => (gruppi[x.ora] ||= []).push(x));
   for (const [o,lista] of Object.entries(gruppi)){
-    h += `<div class="sezione"><div class="sez-head"><h4>${o}</h4><span>${fascia(o)}</span></div><div class="gruppo">`;
+    const val = lista.filter(x => !x.orfano), fatteF = val.filter(x => somm[chiave(x.fid,x.ora)]).length;
+    const daFare = val.length - fatteF, ritF = daFare && inRitardo(o);
+    const col = fatteF === val.length ? '#34C759' : ritF ? '#FF3B30' : '#007AFF';
+    h += `<div class="sezione"><div class="sez-head fascia-h">${val.length ? miniAnello(val.length ? fatteF/val.length : 0, 24, col) : ''}<h4>${o}</h4><span>${fascia(o)}</span>
+      ${val.length ? `<em class="${fatteF === val.length ? 'ok' : ritF ? 'rit' : ''}">${fatteF === val.length ? 'Fatto' : fatteF + ' di ' + val.length}</em>` : ''}
+      ${daFare >= 2 ? `<button class="tutte" onclick="segnaTutte('${o}')">Segna tutte</button>` : ''}</div><div class="gruppo">`;
     lista.forEach(x => {
       const k = chiave(x.fid,x.ora), s = somm[k], rit = !s && inRitardo(x.ora);
       if (x.orfano){
@@ -585,7 +719,7 @@ function vistaOggi(){
         return;
       }
       const da = s?.chi && s.chi!=='—' ? esc(s.chi) : '';
-      const det = !s ? (rit ? `<div class="d rosso">Non ancora data${x.f.dose?' · '+esc(x.f.dose):''}</div>` : `<div class="d">${esc(x.f.dose||'')}</div>`)
+      const det = !s ? (rit ? `<div class="d rosso">Non ancora data${x.f.dose?' · '+esc(x.f.dose):''}</div>` : `<div class="d">${esc(x.f.dose||'')}${x.f.note ? ' · ' + esc(x.f.note) : ''}</div>`)
         : s.modo==='saltata' ? `<div class="d arancio">Non presa${da?', segnato da '+da:''} alle ${hhmm(s.ts)}</div>`
         : s.modo==='sola' ? `<div class="d verde">Presa da sola${da?', segnato da '+da:''} alle ${hhmm(s.ts)}</div>`
         : `<div class="d verde">Data${da?' da '+da:''} alle ${hhmm(s.ts)}</div>`;
@@ -596,7 +730,7 @@ function vistaOggi(){
     h += `</div></div>`;
   }
 
-  // Al bisogno
+  // ===== Al bisogno =====
   if (alBisogno.length){
     h += `<div class="sezione"><div class="sez-head"><h4>Al bisogno</h4><span>Solo quando serve</span></div><div class="gruppo">`;
     alBisogno.forEach(([fid,f]) => {
@@ -604,6 +738,7 @@ function vistaOggi(){
       const max = num(f.maxGiorno), n = prese.length;
       const info = max ? `${n} di ${max} al massimo${f.dose?' · '+esc(f.dose):''}` : (f.dose ? esc(f.dose) : (n ? `${n} ${n===1?'volta':'volte'}` : 'Nessuna dose registrata'));
       h += `<div class="riga tap" onclick="apriFarmaco('${fid}')">${pill(fid)}<div class="testo"><div class="n">${esc(f.nome)}</div><div class="d ${max && n>=max?'arancio':''}">${info}</div></div>
+        ${max ? `<span class="bis-anello">${miniAnello(n/max, 30, n >= max ? '#FF9500' : '#34C759')}<b>${n}</b></span>` : ''}
         <button class="btn-bisogno" onclick="event.stopPropagation(); segnaBisogno('${fid}')">Registra</button></div>`;
       prese.forEach(([k,s]) => {
         const da = s.chi && s.chi!=='—' ? ' da '+esc(s.chi) : '';
