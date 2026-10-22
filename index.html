@@ -253,6 +253,8 @@ main{max-width:640px;margin:0 auto;padding:0 16px}
 #visore .aiuto{color:rgba(255,255,255,.55);font-size:14px;font-weight:400}
 .foto-box img{cursor:zoom-in}
 #visore .chiudi{position:fixed;z-index:2;top:calc(env(safe-area-inset-top,0px) + 10px);right:16px;color:#0A84FF;font-size:17px;font-weight:600;padding:8px}
+.sheet-nav .dx:disabled{color:var(--label3)}
+.spinner-mini{color:var(--label2);animation:gira .9s steps(8) infinite;flex:none}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -276,7 +278,7 @@ try { const n = localStorage.getItem('chi'); if (n){ document.getElementById('sp
 <div class="topbar" id="topbar">
   <div class="sync" id="sync"><i></i><span>Connessione…</span></div>
   <button class="link" id="btnOggi" style="display:none" onclick="tornaOggi()">Oggi</button>
-  <button class="plus" id="btnStampa" style="display:none" onclick="apriStampa()" aria-label="Condividi la terapia">
+  <button class="plus" id="btnStampa" style="display:none" onclick="apriStampa()" aria-label="Condividi il report">
     <svg width="18" height="19" viewBox="0 0 20 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15V2M5.5 6.5L10 2l4.5 4.5"/><path d="M6 10H4a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2v-8a2 2 0 00-2-2h-2"/></svg>
   </button>
   <button class="plus" id="btnPlus" style="display:none" onclick="tab==='visite' ? apriVisita() : apriFarmaco()" aria-label="Aggiungi">
@@ -355,6 +357,7 @@ const svgX = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke
 function previsto(f, g){
   const fr = f.frequenza || 'giornaliera';
   if (fr === 'bisogno') return false;
+  if (f.creatoIl && g < iso(new Date(f.creatoIl))) return false; // prima che il farmaco fosse inserito
   if (fr === 'ogniN'){ const n = Math.max(2, Number(f.ogniN)||2); const diff = Math.round((dt(g) - dt(f.inizio || g)) / 864e5); return diff >= 0 && diff % n === 0; }
   if (fr === 'settimana') return (f.giorniSett || []).includes((dt(g).getDay()+6)%7);
   return true;
@@ -440,7 +443,6 @@ window.addEventListener('scroll', () => document.getElementById('topbar').classL
 function vai(t){
   tab = t;
   if (t === 'oggi' && giorno !== iso(new Date())) { giorno = iso(new Date()); ascoltaGiorno(); }
-  if (t === 'farmaci') caricaPdfLib();
   ['oggi','farmaci','visite','note'].forEach(x => document.getElementById('tab-'+x).classList.toggle('attivo', x===t));
   render(); window.scrollTo(0,0);
 }
@@ -457,7 +459,7 @@ function render(){
   av.style.background = chi ? coloreNome(chi) : '';
   document.getElementById('btnOggi').style.display = (tab==='oggi' && giorno!==iso(new Date())) ? '' : 'none';
   document.getElementById('btnPlus').style.display = (tab==='farmaci' || tab==='visite') ? '' : 'none';
-  document.getElementById('btnStampa').style.display = tab==='farmaci' ? '' : 'none';
+  document.getElementById('btnStampa').style.display = tab==='oggi' ? '' : 'none';
   const m = document.getElementById('main');
   m.innerHTML = tab==='oggi' ? vistaOggi() : tab==='farmaci' ? vistaFarmaci() : tab==='visite' ? vistaVisite() : vistaNote();
   ultimaSpunta = null;
@@ -592,7 +594,7 @@ function vistaFarmaci(){
   h += `<p class="sottotitolo">${lista.filter(([,f])=>f.attivo!==false).length} in terapia</p>`;
   const attivi = lista.filter(([,f])=>f.attivo!==false), sospesi = lista.filter(([,f])=>f.attivo===false);
   const riga = ([fid,f]) => `<div class="riga tap" onclick="apriFarmaco('${fid}')" style="${f.attivo===false?'opacity:.5':''}">${pill(fid)}
-    <div class="testo"><div class="n">${esc(f.nome)}</div><div class="d">${descrFreq(f)}${f.frequenza!=='bisogno' && (f.orari||[]).length ? ', '+f.orari.join(' ') : ''}${f.dose?' · '+esc(f.dose):''}</div>${svgGenerico(f)}</div>
+    <div class="testo"><div class="n">${esc(f.nome)}</div><div class="d">${descrFreq(f)}${f.frequenza!=='bisogno' && (f.orari||[]).length ? ', '+f.orari.join(' ') : ''}${f.dose?' · '+esc(f.dose):''}</div>${svgGenerico(f)}${f.note ? `<div class="d" style="color:var(--label)">${esc(f.note)}</div>` : ''}</div>
     ${inScorta(f)?`<span class="tag ${scortaBassa(f)?'basso':''}">${f.scorta}</span>`:''}${svgChev}</div>`;
   if (attivi.length) h += `<div class="sezione"><div class="gruppo">${attivi.map(riga).join('')}</div></div>`;
   if (sospesi.length) h += `<div class="sezione"><div class="sez-head"><h4 style="font-size:17px">Sospesi</h4></div><div class="gruppo">${sospesi.map(riga).join('')}</div></div>`;
@@ -692,6 +694,7 @@ function provaChiudiSplash(forza){
     const sp = document.getElementById('splash');
     if (sp.classList.contains('via')) return;
     sp.classList.add('via');
+    setTimeout(() => caricaPdfLib().catch(() => {}), 1500);
     if (!chi) mostraBenvenuto();
   }, attesa);
 }
@@ -865,6 +868,7 @@ function salvaFarmaco(fid){
     modificatoDa: chi || '—', modificatoIl: Date.now()
   };
   dati.generico = document.getElementById('fGenerico').value.trim();
+  dati.creatoIl = fid ? (farmaci[fid]?.creatoIl || farmaci[fid]?.modificatoIl || Date.now()) : Date.now();
   dati.miniatura = fotoRimossa ? null : (fotoNuova ? fotoMini : (fid ? farmaci[fid]?.miniatura || null : null));
   const ref = fid ? PR().child('farmaci/'+fid) : PR().child('farmaci').push();
   ref.set(dati);
@@ -1078,24 +1082,77 @@ function vediFotoScheda(){
 }
 function chiudiFoto(){ document.getElementById('visore').classList.remove('aperto','zoom'); }
 
-// ====== STAMPA ======
-let stampaModo = 'giorno';
+// ====== CONDIVIDI REPORT ======
+let stampaModo = 'giorno', reportFile = null, reportToken = 0;
+let pdfLib = null;
+function caricaScript(src){ return new Promise((ok, ko) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = ko; document.head.appendChild(s); }); }
+function caricaPdfLib(){
+  if (!pdfLib) pdfLib = caricaScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js').catch(e => { pdfLib = null; throw e; });
+  return pdfLib;
+}
+const svgPdf = `<svg width="28" height="32" viewBox="0 0 28 32" fill="none"><path d="M4 1h14l9 9v19a2 2 0 01-2 2H4a2 2 0 01-2-2V3a2 2 0 012-2z" fill="var(--fill)" stroke="var(--label3)"/><path d="M18 1v7a2 2 0 002 2h7" stroke="var(--label3)"/><text x="14" y="24" text-anchor="middle" font-size="7" font-weight="700" fill="var(--red)" font-family="-apple-system,sans-serif">PDF</text></svg>`;
+
 function apriStampa(){
   stampaModo = 'giorno';
-  caricaPdfLib();
-  apri(nav('Condividi terapia', ['Annulla','chiudi()'], ['Condividi','condividiTerapia()']) + `<div class="form">
+  apri(nav('Condividi', ['Annulla','chiudi()'], ['Condividi','condividiTerapia()']) + `<div class="form">
+    <div class="f-gruppo"><div class="f-riga" id="stStato" style="min-height:64px"></div></div>
     <div class="f-label">Periodo</div>
-    <div class="f-gruppo">${[['giorno','Un giorno'],['settimana','Una settimana (7 giorni)']].map(([v,l]) => `<button class="f-riga opzione" data-st="${v}" onclick="stampaModo='${v}'; aggiornaStampaUI()"><span>${l}</span>${svgSpunta}</button>`).join('')}</div>
+    <div class="f-gruppo">${[['giorno','Un giorno'],['settimana','Una settimana']].map(([v,l]) => `<button class="f-riga opzione" data-st="${v}" onclick="stampaModo='${v}'; aggiornaStampaUI(); preparaReport()"><span>${l}</span>${svgSpunta}</button>`).join('')}</div>
     <div class="f-gruppo">
-      <div class="f-riga"><label for="stData" id="stLabel">Giorno</label><input type="date" class="dx" id="stData" value="${giorno}"></div>
-      <div class="f-riga"><label for="stFoto">Foto delle scatole</label><input type="checkbox" class="switch" id="stFoto" checked></div>
+      <div class="f-riga"><label for="stData" id="stLabel">Giorno</label><input type="date" class="dx" id="stData" value="${giorno}" onchange="preparaReport()"></div>
+      <div class="f-riga"><label for="stFoto">Foto delle scatole</label><input type="checkbox" class="switch" id="stFoto" checked onchange="preparaReport()"></div>
     </div>
-    <p class="f-nota">Viene creato un PDF pronto da mandare su WhatsApp, per email o da stampare.</p></div>`);
-  aggiornaStampaUI();
+    <p class="f-nota">Il report riporta le dosi date, quelle non prese e quelle mancanti, con chi le ha segnate. Si condivide su WhatsApp, per email o si stampa.</p></div>`);
+  aggiornaStampaUI(); preparaReport();
 }
 function aggiornaStampaUI(){
   document.querySelectorAll('[data-st]').forEach(b => b.querySelector('svg').style.visibility = b.dataset.st===stampaModo ? 'visible' : 'hidden');
   document.getElementById('stLabel').textContent = stampaModo==='giorno' ? 'Giorno' : 'A partire dal';
+}
+function statoReport(pronto, testo){
+  const b = document.querySelector('.sheet-nav .dx'), st = document.getElementById('stStato');
+  if (b) b.disabled = !pronto;
+  if (st) st.innerHTML = `${svgPdf}<div class="testo" style="margin-left:4px"><div class="n" style="font-size:16px">${esc(pronto ? reportFile.name.replace('.pdf','') : 'Report')}</div><div class="d">${esc(testo)}</div></div>
+    ${pronto ? '' : '<svg class="spinner-mini" width="20" height="20" viewBox="0 0 26 26">' + [...Array(8)].map((_,i) => `<rect x="11.8" y="1.5" width="2.4" height="7" rx="1.2" fill="currentColor" opacity="${(1-i*.11).toFixed(2)}" transform="rotate(${-i*45} 13 13)"/>`).join('') + '</svg>'}`;
+}
+async function preparaReport(){
+  const tok = ++reportToken; reportFile = null;
+  statoReport(false, 'Preparo il report…');
+  try {
+    await caricaPdfLib();
+    const g0 = document.getElementById('stData').value || giorno, foto = document.getElementById('stFoto').checked, modo = stampaModo;
+    const giorni = modo === 'settimana' ? [...Array(7)].map((_,i) => sposta(g0, i)) : [g0];
+    const letti = await Promise.all(giorni.map(g => PR().child('somministrazioni/' + g).once('value').then(s => s.val() || {})));
+    if (tok !== reportToken) return;
+    const sommPer = {}; giorni.forEach((g,i) => sommPer[g] = letti[i]);
+    const res = creaPdf(modo, giorni, foto, sommPer);
+    reportFile = new File([res.blob], res.nome, {type:'application/pdf'});
+    statoReport(true, `Pronto da condividere, ${res.pagine === 1 ? '1 pagina' : res.pagine + ' pagine'}`);
+  } catch(e){
+    console.error(e);
+    if (tok === reportToken) statoReport(false, 'Non riesco a prepararlo: controlla la connessione');
+  }
+}
+async function condividiTerapia(){
+  if (!reportFile) return;
+  const file = reportFile;
+  chiudi();
+  if (navigator.canShare && navigator.canShare({files:[file]})){
+    try { await navigator.share({files:[file]}); }
+    catch(e){ if (e.name !== 'AbortError') scaricaPdf(file); }
+  } else scaricaPdf(file);
+}
+function scaricaPdf(file){
+  const url = URL.createObjectURL(file), a = document.createElement('a');
+  a.href = url; a.download = file.name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+
+// Stato di una dose in un giorno: data, sola, saltata, mancata, dafare
+function statoDose(fid, ora, g, sg){
+  const r = sg[chiave(fid, ora)];
+  if (r) return {stato: r.modo==='saltata' ? 'saltata' : (r.modo==='sola' ? 'sola' : 'data'), chi: r.chi && r.chi!=='—' ? r.chi : '', ts: r.ts};
+  return {stato: inRitardo(ora, g) ? 'mancata' : 'dafare'};
 }
 function dosiPreviste(g){
   const d = [];
@@ -1105,127 +1162,269 @@ function dosiPreviste(g){
   }
   return d.sort((a,b) => a.ora.localeCompare(b.ora) || a.f.nome.localeCompare(b.f.nome));
 }
-// Libreria PDF caricata solo quando serve
-let pdfLib = null;
-function caricaScript(src){ return new Promise((ok, ko) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = ko; document.head.appendChild(s); }); }
-function caricaPdfLib(){
-  if (!pdfLib) pdfLib = caricaScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js')
-    .then(() => caricaScript('https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js'))
-    .catch(e => { pdfLib = null; throw e; });
-  return pdfLib;
-}
-function pdfPronto(){ return !!(window.jspdf && window.jspdf.jsPDF && window.jspdf.jsPDF.API.autoTable); }
 
-function creaPdf(modo, g0, foto){
+function creaPdf(modo, giorni, foto, sommPer){
   const { jsPDF } = window.jspdf;
   const sett = modo === 'settimana';
   const doc = new jsPDF({orientation: sett ? 'landscape' : 'portrait', unit:'mm', format:'a4'});
-  const W = doc.internal.pageSize.getWidth(), M = 14;
-  const lunga = g => dt(g).toLocaleDateString('it-IT', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
-  const giorni = sett ? [...Array(7)].map((_,i) => sposta(g0, i)) : [g0];
-  const GG = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
+  const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 16, FONDO = 16;
+  const C = {label:[28,28,30], sec:[110,110,115], ter:[160,160,165], sep:[222,222,228], card:[242,242,247],
+    green:[52,199,89], orange:[255,149,0], red:[255,59,48], blue:[0,122,255], gray:[174,174,178], white:[255,255,255]};
+  const rgb = h => [1,3,5].map(i => parseInt(h.slice(i,i+2),16));
+  const oggi = iso(new Date());
+  let y = 0;
 
-  // Intestazione
-  doc.setFont('helvetica','bold'); doc.setFontSize(19); doc.setTextColor(0);
-  doc.text(`Terapia di ${nomePaz()}`, M, 18);
-  doc.setFont('helvetica','normal'); doc.setFontSize(10.5); doc.setTextColor(100);
-  doc.text(sett ? `Dal ${lunga(giorni[0])} al ${lunga(giorni[6])}` : lunga(g0), M, 25);
-
-  const testoFarmaco = (f, conNote) => f.nome + (f.generico ? `\nGenerico: ${f.generico}` : '') + (conNote && f.note ? `\n${f.note}` : '');
-  const immagini = [];
-  const comuni = (startY) => ({
-    startY, margin:{left:M, right:M}, theme:'plain',
-    styles:{font:'helvetica', fontSize:10, cellPadding:{top:2.6, bottom:2.6, left:2, right:2}, valign:'middle', textColor:20, overflow:'linebreak'},
-    headStyles:{fontStyle:'bold', fontSize:8, textColor:110},
-    didParseCell: d => {
-      if (d.cell.raw === 'BOX' || d.cell.raw === 'NO'){ d.cell.text = ['']; d.cell.styles.halign = 'center'; }
-      const r = d.row.raw && d.row.raw._img;
-      if (d.section === 'body' && foto && r && d.column.dataKey === 'farmaco'){ d.cell.styles.cellPadding = {top:2.6, bottom:2.6, left:14, right:2}; d.cell.styles.minCellHeight = 13; }
-      if (d.section === 'body' && d.column.dataKey === 'ora'){ d.cell.styles.fontStyle = 'bold'; d.cell.styles.fontSize = 12; }
-      if (d.section === 'body' && d.column.dataKey === 'farmaco') d.cell.styles.fontStyle = 'bold';
-    },
-    didDrawCell: d => {
-      const {x, y, width:w, height:h} = d.cell;
-      if (d.section === 'head'){ doc.setDrawColor(0); doc.setLineWidth(.45); doc.line(x, y+h, x+w, y+h); return; }
-      doc.setDrawColor(200); doc.setLineWidth(.2); doc.line(x, y+h, x+w, y+h);
-      if (d.cell.raw === 'BOX'){ doc.setDrawColor(0); doc.setLineWidth(.35); doc.roundedRect(x+w/2-2.2, y+h/2-2.2, 4.4, 4.4, .6, .6); }
-      if (d.cell.raw === 'NO'){ doc.setDrawColor(170); doc.setLineWidth(.3); doc.line(x+w/2-1.5, y+h/2, x+w/2+1.5, y+h/2); }
-      const img = d.row.raw && d.row.raw._img;
-      if (foto && img && d.column.dataKey === 'farmaco'){ try { doc.addImage(img, 'JPEG', x+2, y+(h-10)/2, 10, 10); } catch(e){} }
+  // --- primitive ---
+  const font = (size, bold, color) => { doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(size); doc.setTextColor(...(color||C.label)); };
+  const tronca = (t, w) => { t = String(t||''); if (doc.getTextWidth(t) <= w) return t; while (t.length > 1 && doc.getTextWidth(t + '…') > w) t = t.slice(0,-1); return t.trimEnd() + '…'; };
+  const scrivi = (t, x, yy, o = {}) => { font(o.size||11, o.bold, o.color); doc.text(o.w ? tronca(t, o.w) : String(t), x, yy, {align: o.align||'left', baseline:'middle'}); };
+  const riempi = c => doc.setFillColor(...c), traccia = c => doc.setDrawColor(...c);
+  const tondo = (x, yy, w, h, r, c) => { riempi(c); doc.roundedRect(x, yy, w, h, r, r, 'F'); };
+  function immagine(img, x, yy, s, r, tipo){
+    try { doc.saveGraphicsState(); doc.roundedRect(x, yy, s, s, r, r, null); doc.clip(); doc.discardPath(); doc.addImage(img, tipo||'JPEG', x, yy, s, s); doc.restoreGraphicsState(); }
+    catch(e){ try { doc.restoreGraphicsState(); } catch(_){} }
+  }
+  function miniatura(fid, f, x, yy, s){
+    if (foto && f.miniatura) return immagine(f.miniatura, x, yy, s, s*.22);
+    tondo(x, yy, s, s, s*.22, rgb(colore(fid)));
+    scrivi((f.nome||'?').trim()[0].toUpperCase(), x+s/2, yy+s/2+.2, {size: s*1.6, bold:true, color:C.white, align:'center'});
+  }
+  function icona(stato, cx, cy, r){
+    doc.setLineCap('round'); doc.setLineJoin('round');
+    if (stato==='data' || stato==='sola'){
+      riempi(C.green); doc.circle(cx, cy, r, 'F'); traccia(C.white); doc.setLineWidth(r*.28);
+      doc.line(cx-r*.45, cy+r*.02, cx-r*.12, cy+r*.36); doc.line(cx-r*.12, cy+r*.36, cx+r*.48, cy-r*.36);
+    } else if (stato==='saltata'){
+      riempi(C.orange); doc.circle(cx, cy, r, 'F'); traccia(C.white); doc.setLineWidth(r*.26);
+      doc.line(cx-r*.36, cy-r*.36, cx+r*.36, cy+r*.36); doc.line(cx+r*.36, cy-r*.36, cx-r*.36, cy+r*.36);
+    } else if (stato==='mancata'){
+      traccia(C.red); doc.setLineWidth(r*.24); doc.circle(cx, cy, r*.88, 'S');
+      riempi(C.red); doc.circle(cx, cy, r*.3, 'F');
+    } else if (stato==='dafare'){
+      traccia(C.gray); doc.setLineWidth(r*.2); doc.circle(cx, cy, r*.88, 'S');
+    } else {
+      traccia(C.sep); doc.setLineWidth(.5); doc.line(cx-r*.6, cy, cx+r*.6, cy);
     }
-  });
+  }
+  const ETICHETTA = {data:['Data',C.green], sola:['Presa da sola',C.green], saltata:['Non presa',C.orange], mancata:['Non data',C.red], dafare:['Da dare',C.sec]};
 
-  let y = 31;
+  // --- pagine ---
+  function testata(){
+    const logo = document.querySelector('link[rel="apple-touch-icon"]')?.href;
+    if (logo) immagine(logo, M, 12, 8, 1.9, 'PNG');
+    scrivi('Farmaci Nonni', M+11, 16, {size:10, bold:true, color:C.sec});
+    const ora = new Date();
+    scrivi(`Creato il ${ora.toLocaleDateString('it-IT')} alle ${hhmm(ora)}${chi ? ' da ' + chi : ''}`, W-M, 16, {size:8.5, color:C.ter, align:'right'});
+  }
+  function nuovaPagina(){ doc.addPage(); testata(); y = 30; }
+  const serve = h => { if (y + h > H - FONDO) nuovaPagina(); };
+  function titoloSezione(t, sotto){
+    serve(16);
+    scrivi(t, M, y, {size:14, bold:true});
+    if (sotto){ font(14, true); const w = doc.getTextWidth(t); scrivi(sotto, M + w + 3, y + .3, {size:10.5, color:C.sec}); }
+    y += 6;
+  }
+  // card a righe con interruzione di pagina
+  function card(righe, altezza, disegna, sinistraSep){
+    let i = 0;
+    while (i < righe.length){
+      serve(altezza);
+      const n = Math.max(1, Math.min(righe.length - i, Math.floor((H - FONDO - y) / altezza)));
+      tondo(M, y, W-2*M, n*altezza, 3.2, C.card);
+      for (let k = 0; k < n; k++){
+        const ry = y + k*altezza;
+        if (k > 0){ traccia(C.sep); doc.setLineWidth(.25); doc.line(M + (sinistraSep||4), ry, W-M-4, ry); }
+        disegna(righe[i+k], ry);
+      }
+      y += n*altezza; i += n;
+      if (i < righe.length) nuovaPagina();
+    }
+    y += 8;
+  }
+  function riquadri(voci){
+    const gap = 4, w = (W - 2*M - gap*(voci.length-1)) / voci.length, h = 21;
+    serve(h + 8);
+    voci.forEach(([num, sotto, etich, col], i) => {
+      const x = M + i*(w+gap);
+      tondo(x, y, w, h, 3.2, C.card);
+      font(20, true, col); doc.text(String(num), x+5, y+9.5, {baseline:'middle'});
+      if (sotto){ const nw = doc.getTextWidth(String(num)); scrivi(sotto, x+5+nw+1.5, y+10.3, {size:11, bold:true, color:C.ter}); }
+      scrivi(etich, x+5, y+16, {size:9, color:C.sec});
+    });
+    y += h + 10;
+  }
+
+  // --- intestazione ---
+  testata();
+  const lunga = g => dt(g).toLocaleDateString('it-IT', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+  const breve = g => dt(g).toLocaleDateString('it-IT', {day:'numeric', month:'long'});
+  y = 33;
+  scrivi(nomePaz(), M, y, {size:28, bold:true});
+  y += 10;
+  scrivi(sett ? `Terapia della settimana, dal ${breve(giorni[0])} al ${lunga(giorni[6]).replace(/^\S+ /,'')}` : `Terapia di ${lunga(giorni[0])}`, M, y, {size:12.5, color:C.sec});
+  y += 10;
+
+  // --- dati ---
+  const tutte = [];
+  giorni.forEach(g => dosiPreviste(g).forEach(x => tutte.push({...x, g, st: statoDose(x.fid, x.ora, g, sommPer[g] || {})})));
+  const conta = s => tutte.filter(x => x.st.stato === s).length;
+  const date = conta('data') + conta('sola'), saltate = conta('saltata'), mancate = conta('mancata'), dafare = conta('dafare');
+  if (tutte.length) riquadri([
+    [date, '/' + tutte.length, 'Dosi date', C.green],
+    [saltate, '', 'Non prese', saltate ? C.orange : C.ter],
+    [mancate, '', 'Non date', mancate ? C.red : C.ter],
+    [dafare, '', 'Ancora da dare', dafare ? C.blue : C.ter]
+  ]);
+
   if (!sett){
-    const dosi = dosiPreviste(g0);
-    if (dosi.length){
-      doc.autoTable({...comuni(y),
-        columns:[{header:'Ora', dataKey:'ora'},{header:'Farmaco', dataKey:'farmaco'},{header:'Dose', dataKey:'dose'},{header:'Note', dataKey:'note'},{header:'Data', dataKey:'ok'}],
-        columnStyles:{ora:{cellWidth:18}, farmaco:{cellWidth:68}, dose:{cellWidth:36}, ok:{cellWidth:14, halign:'center'}},
-        body: dosi.map((x,i) => ({ora: i && dosi[i-1].ora===x.ora ? '' : x.ora, farmaco: testoFarmaco(x.f, false), dose: x.f.dose || '', note: x.f.note || '', ok:'BOX', _img: x.f.miniatura}))});
-      y = doc.lastAutoTable.finalY + 10;
-    } else { doc.setFontSize(11); doc.setTextColor(60); doc.text('Nessun farmaco a orario in questo giorno.', M, y+6); y += 16; }
+    // ===== GIORNO =====
+    const g = giorni[0];
+    if (!tutte.length){ titoloSezione('Nessun farmaco a orario in questo giorno'); }
+    const gruppi = {};
+    tutte.forEach(x => (gruppi[x.ora] ||= []).push(x));
+    for (const [ora, lista] of Object.entries(gruppi)){
+      serve(6 + 16);
+      titoloSezione(ora, fascia(ora));
+      card(lista, 16, (x, ry) => {
+        miniatura(x.fid, x.f, M+4, ry+3.5, 9);
+        const xs = M+17, wTesto = W - M - 62 - xs;
+        scrivi(x.f.nome, xs, ry+6.3, {size:11.5, bold:true, w:wTesto});
+        scrivi([x.f.dose, x.f.generico ? 'Generico: ' + x.f.generico : '', x.f.note].filter(Boolean).join('  ·  '), xs, ry+11, {size:8.8, color:C.sec, w:wTesto});
+        const [et, col] = ETICHETTA[x.st.stato];
+        icona(x.st.stato, W-M-8, ry+8, 2.9);
+        if (x.st.ts){
+          scrivi(et, W-M-14, ry+6.3, {size:10, bold:true, color:col, align:'right'});
+          scrivi(`${x.st.chi ? x.st.chi + ', ' : ''}alle ${hhmm(x.st.ts)}`, W-M-14, ry+10.8, {size:8.5, color:C.sec, align:'right'});
+        } else scrivi(et, W-M-14, ry+8.2, {size:10, bold:true, color:col, align:'right'});
+      }, 17);
+    }
+    // Al bisogno
+    const bis = Object.entries(farmaci).filter(([,f]) => f.attivo!==false && f.frequenza==='bisogno').sort((a,b) => a[1].nome.localeCompare(b[1].nome));
+    if (bis.length){
+      titoloSezione('Al bisogno', 'solo quando serve');
+      card(bis, 16, ([fid,f], ry) => {
+        miniatura(fid, f, M+4, ry+3.5, 9);
+        const xs = M+17, wTesto = W - M - 70 - xs;
+        scrivi(f.nome, xs, ry+6.3, {size:11.5, bold:true, w:wTesto});
+        scrivi([f.dose, f.maxGiorno ? `massimo ${f.maxGiorno} al giorno` : '', f.generico ? 'Generico: ' + f.generico : ''].filter(Boolean).join('  ·  '), xs, ry+11, {size:8.8, color:C.sec, w:wTesto});
+        const prese = Object.values(sommPer[g] || {}).filter(s => s.bisogno && s.fid===fid).sort((a,b) => a.ts-b.ts);
+        if (prese.length){
+          icona('data', W-M-8, ry+8, 2.9);
+          scrivi(prese.length === 1 ? 'Presa 1 volta' : `Presa ${prese.length} volte`, W-M-14, ry+6.3, {size:10, bold:true, color:C.green, align:'right'});
+          scrivi(prese.map(s => s.ora + (s.chi && s.chi!=='—' ? ' ' + s.chi : '')).join(', '), W-M-14, ry+10.8, {size:8.5, color:C.sec, align:'right', w:60});
+        } else scrivi('Non presa', W-M-14, ry+8.2, {size:10, bold:true, color:C.ter, align:'right'});
+      }, 17);
+    }
   } else {
+    // ===== SETTIMANA =====
     const righe = {};
-    giorni.forEach(g => dosiPreviste(g).forEach(x => { righe[x.ora + '|' + x.fid] = x; }));
+    tutte.forEach(x => { const k = x.ora + '|' + x.fid; (righe[k] ||= {fid:x.fid, f:x.f, ora:x.ora, giorni:{}}).giorni[x.g] = x.st; });
     const lista = Object.values(righe).sort((a,b) => a.ora.localeCompare(b.ora) || a.f.nome.localeCompare(b.f.nome));
+    const sx = 108, cw = (W - M - sx) / 7, GG = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
+    const testaGiorni = () => {
+      serve(14);
+      scrivi('Farmaco', M+4, y+5, {size:8.5, bold:true, color:C.sec});
+      giorni.forEach((g,i) => {
+        const cx = sx + cw*i + cw/2, d = dt(g);
+        scrivi(GG[d.getDay()], cx, y+2.5, {size:8.5, bold:true, color:C.sec, align:'center'});
+        if (g === oggi){ riempi(C.red); doc.circle(cx, y+8.2, 3.3, 'F'); }
+        scrivi(String(d.getDate()), cx, y+8.4, {size:11, bold:true, color: g===oggi ? C.white : C.label, align:'center'});
+      });
+      y += 14;
+    };
     if (lista.length){
-      const cols = [{header:'Ora', dataKey:'ora'},{header:'Farmaco', dataKey:'farmaco'},{header:'Dose', dataKey:'dose'}]
-        .concat(giorni.map((g,i) => { const d = dt(g); return {header:`${GG[d.getDay()]} ${d.getDate()}/${d.getMonth()+1}`, dataKey:'g'+i}; }));
-      const cs = {ora:{cellWidth:16}, farmaco:{cellWidth:70}, dose:{cellWidth:34}};
-      giorni.forEach((g,i) => cs['g'+i] = {halign:'center'});
-      doc.autoTable({...comuni(y), columns: cols, columnStyles: cs,
-        headStyles:{fontStyle:'bold', fontSize:8, textColor:110, halign:'left'},
-        didParseCell: (orig => d => { orig(d); if (d.section==='head' && d.column.dataKey.startsWith('g')) d.cell.styles.halign = 'center'; })(comuni(y).didParseCell),
-        body: lista.map((x,i) => { const r = {ora: i && lista[i-1].ora===x.ora ? '' : x.ora, farmaco: testoFarmaco(x.f, true), dose: x.f.dose || '', _img: x.f.miniatura};
-          giorni.forEach((g,j) => r['g'+j] = previsto(x.f, g) ? 'BOX' : 'NO'); return r; })});
-      y = doc.lastAutoTable.finalY + 10;
-    } else { doc.setFontSize(11); doc.setTextColor(60); doc.text('Nessun farmaco a orario in questa settimana.', M, y+6); y += 16; }
+      titoloSezione('Farmaci a orario');
+      testaGiorni();
+      let ultimaOra = null;
+      card(lista, 14, (r, ry) => {
+        if (r.ora !== ultimaOra || ry < 40) scrivi(r.ora, M+4, ry+7, {size:10.5, bold:true});
+        ultimaOra = r.ora;
+        miniatura(r.fid, r.f, M+17, ry+3, 8);
+        scrivi(r.f.nome, M+28, ry+5.6, {size:10.5, bold:true, w: sx-M-32});
+        scrivi([r.f.dose, r.f.generico ? 'Gen.: ' + r.f.generico : ''].filter(Boolean).join('  ·  '), M+28, ry+10, {size:8, color:C.sec, w: sx-M-32});
+        giorni.forEach((g,i) => icona(r.giorni[g] ? r.giorni[g].stato : 'no', sx + cw*i + cw/2, ry+7, 2.5));
+      }, 17);
+    } else titoloSezione('Nessun farmaco a orario in questa settimana');
+
+    const bis = Object.entries(farmaci).filter(([,f]) => f.attivo!==false && f.frequenza==='bisogno').sort((a,b) => a[1].nome.localeCompare(b[1].nome));
+    if (bis.length){
+      titoloSezione('Al bisogno', 'quante volte è stato preso');
+      testaGiorni();
+      card(bis, 14, ([fid,f], ry) => {
+        miniatura(fid, f, M+4, ry+3, 8);
+        scrivi(f.nome, M+15, ry+5.6, {size:10.5, bold:true, w: sx-M-19});
+        scrivi([f.dose, f.maxGiorno ? `max ${f.maxGiorno} al giorno` : ''].filter(Boolean).join('  ·  '), M+15, ry+10, {size:8, color:C.sec, w: sx-M-19});
+        giorni.forEach((g,i) => {
+          const n = Object.values(sommPer[g] || {}).filter(s => s.bisogno && s.fid===fid).length, cx = sx + cw*i + cw/2;
+          if (n){ const sopra = f.maxGiorno && n > f.maxGiorno; riempi(sopra ? C.orange : C.green); doc.circle(cx, ry+7, 2.7, 'F'); scrivi(String(n), cx, ry+7.2, {size:9, bold:true, color:C.white, align:'center'}); }
+          else icona('no', cx, ry+7, 2.5);
+        });
+      }, 4);
+    }
+    // legenda
+    serve(10);
+    let lx = M;
+    [['data','Data'],['saltata','Non presa'],['mancata','Non data'],['dafare','Da dare'],['no','Non prevista']].forEach(([s,t]) => {
+      icona(s, lx+2.4, y+2, 2.1); scrivi(t, lx+6.5, y+2.2, {size:8.5, color:C.sec}); font(8.5); lx += 10 + doc.getTextWidth(t) + 6;
+    });
+    y += 12;
   }
 
-  const bisogno = Object.values(farmaci).filter(f => f.attivo!==false && f.frequenza==='bisogno').sort((a,b) => a.nome.localeCompare(b.nome));
-  if (bisogno.length){
-    if (y > doc.internal.pageSize.getHeight() - 40){ doc.addPage(); y = 18; }
-    doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(0); doc.text('Al bisogno', M, y);
-    doc.autoTable({...comuni(y+3),
-      columns:[{header:'Farmaco', dataKey:'farmaco'},{header:'Dose', dataKey:'dose'},{header:'Massimo al giorno', dataKey:'max'},{header:'Note', dataKey:'note'}],
-      columnStyles:{farmaco:{cellWidth:72}, dose:{cellWidth:40}, max:{cellWidth:34}},
-      body: bisogno.map(f => ({farmaco: testoFarmaco(f, false), dose: f.dose || '', max: f.maxGiorno != null ? String(f.maxGiorno) : '–', note: f.note || '', _img: f.miniatura}))});
+  // --- Da ricomprare ---
+  const bassi = Object.entries(farmaci).filter(([,f]) => f.attivo!==false && scortaBassa(f));
+  if (bassi.length){
+    titoloSezione('Da ricomprare');
+    card(bassi, 12, ([fid,f], ry) => {
+      miniatura(fid, f, M+4, ry+2.5, 7);
+      scrivi(f.nome, M+15, ry+6.2, {size:10.5, bold:true});
+      scrivi(`${f.scorta} rimaste`, W-M-5, ry+6.2, {size:10, bold:true, color:C.orange, align:'right'});
+    }, 15);
   }
 
-  // Piè di pagina su ogni pagina
-  const n = doc.getNumberOfPages(), H = doc.internal.pageSize.getHeight();
+  // --- Visite ---
+  const da = giorni[0], fino = sposta(giorni[giorni.length-1], 30);
+  const vis = Object.values(visite).filter(v => v.data >= da && v.data <= fino).sort((a,b) => (a.data+(a.ora||'')).localeCompare(b.data+(b.ora||''))).slice(0, 8);
+  if (vis.length){
+    titoloSezione('Prossime visite');
+    const MESI = ['GEN','FEB','MAR','APR','MAG','GIU','LUG','AGO','SET','OTT','NOV','DIC'];
+    card(vis, 15, (v, ry) => {
+      const d = dt(v.data);
+      riempi(C.white); doc.roundedRect(M+4, ry+2.5, 10, 10, 2, 2, 'F');
+      scrivi(MESI[d.getMonth()], M+9, ry+5, {size:6, bold:true, color:C.red, align:'center'});
+      scrivi(String(d.getDate()), M+9, ry+9.4, {size:11, bold:true, align:'center'});
+      scrivi(v.titolo + (v.medico ? ', ' + v.medico : ''), M+18, ry+5.9, {size:11, bold:true, w: W-2*M-70});
+      scrivi([d.toLocaleDateString('it-IT', {weekday:'long', day:'numeric', month:'long'}) + (v.ora ? ' alle ' + v.ora : ''), v.luogo].filter(Boolean).join('  ·  '), M+18, ry+10.6, {size:8.8, color:C.sec, w: W-2*M-70});
+      if (v.accompagna) scrivi('Accompagna ' + v.accompagna, W-M-5, ry+7.6, {size:9, color:C.sec, align:'right'});
+    }, 18);
+  }
+
+  // --- Note del periodo ---
+  const not = Object.values(note).filter(n => giorni.includes(iso(new Date(n.ts)))).sort((a,b) => a.ts-b.ts);
+  if (not.length){
+    titoloSezione('Note');
+    not.forEach(n => {
+      font(10); const righe = doc.splitTextToSize(n.testo, W-2*M-10), h = 10 + righe.length*4.6;
+      serve(h);
+      tondo(M, y, W-2*M, h, 3.2, C.card);
+      scrivi(`${n.chi || ''}, ${new Date(n.ts).toLocaleString('it-IT', {weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'})}`, M+5, y+5, {size:8.5, bold:true, color:C.sec});
+      font(10, false, C.label); doc.text(righe, M+5, y+10.5, {baseline:'middle', lineHeightFactor:1.3});
+      y += h + 3;
+    });
+    y += 5;
+  }
+
+  // --- piè di pagina ---
+  const n = doc.getNumberOfPages();
   for (let i = 1; i <= n; i++){
-    doc.setPage(i); doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(140);
-    doc.text(`Farmaci Nonni, creato il ${new Date().toLocaleDateString('it-IT')}${chi ? ' da ' + chi : ''}`, M, H-8);
-    if (n > 1) doc.text(`Pagina ${i} di ${n}`, W-M, H-8, {align:'right'});
+    doc.setPage(i);
+    scrivi(`Terapia di ${nomePaz()}`, M, H-8, {size:8, color:C.ter});
+    scrivi(`Pagina ${i} di ${n}`, W-M, H-8, {size:8, color:C.ter, align:'right'});
   }
-  const d = g0.split('-').reverse().join('-');
-  return {blob: doc.output('blob'), nome: `Terapia ${nomePaz()} ${sett ? 'settimana dal ' : ''}${d}.pdf`};
+  const dd = giorni[0].split('-').reverse().join('-');
+  return {blob: doc.output('blob'), nome: `Terapia ${nomePaz()} ${sett ? 'settimana dal ' : ''}${dd}.pdf`, pagine: n};
 }
 
-function scaricaPdf(blob, nome){
-  const url = URL.createObjectURL(blob), a = document.createElement('a');
-  a.href = url; a.download = nome; document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 30000);
-}
-async function condividiTerapia(){
-  if (!pdfPronto()){
-    caricaPdfLib().then(() => alert('Il report è pronto: tocca di nuovo Condividi.')).catch(() => alert('Non riesco a preparare il report: controlla la connessione e riprova.'));
-    return;
-  }
-  const g0 = document.getElementById('stData').value || giorno, foto = document.getElementById('stFoto').checked;
-  let res;
-  try { res = creaPdf(stampaModo, g0, foto); } catch(e){ alert('Errore nel creare il report.'); return; }
-  const file = new File([res.blob], res.nome, {type:'application/pdf'});
-  chiudi();
-  if (navigator.canShare && navigator.canShare({files:[file]})){
-    try { await navigator.share({files:[file]}); }
-    catch(e){ if (e.name !== 'AbortError') scaricaPdf(res.blob, res.nome); }
-  } else scaricaPdf(res.blob, res.nome);
-}
-
-// ====== NOTE ======// ====== NOTE ======
+// ====== NOTE ======
 function aggiungiNota(){
   const t = document.getElementById('nuovaNota').value.trim(); if (!t) return;
   if (!chi) { chiediNome(aggiungiNota); return; }
