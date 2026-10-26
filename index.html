@@ -1448,23 +1448,28 @@ function creaPdf(modo, giorni, foto, sommPer){
     if (sotto){ font(14, true); const w = doc.getTextWidth(t); scrivi(sotto, M + w + 3, y + .3, {size:10.5, color:C.sec}); }
     y += 6;
   }
-  // card a righe con interruzione di pagina
+  // card a righe (altezza fissa o variabile) con interruzione di pagina
   function card(righe, altezza, disegna, sinistraSep){
+    const hOf = r => typeof altezza === 'function' ? altezza(r) : altezza;
     let i = 0;
     while (i < righe.length){
-      serve(altezza);
-      const n = Math.max(1, Math.min(righe.length - i, Math.floor((H - FONDO - y) / altezza)));
-      tondo(M, y, W-2*M, n*altezza, 3.2, C.card);
+      serve(hOf(righe[i]));
+      let n = 0, tot = 0;
+      while (i + n < righe.length && y + tot + hOf(righe[i+n]) <= H - FONDO){ tot += hOf(righe[i+n]); n++; }
+      if (!n){ n = 1; tot = hOf(righe[i]); }
+      tondo(M, y, W-2*M, tot, 3.2, C.card);
+      let ry = y;
       for (let k = 0; k < n; k++){
-        const ry = y + k*altezza;
         if (k > 0){ traccia(C.sep); doc.setLineWidth(.25); doc.line(M + (sinistraSep||4), ry, W-M-4, ry); }
-        disegna(righe[i+k], ry);
+        disegna(righe[i+k], ry, hOf(righe[i+k]));
+        ry += hOf(righe[i+k]);
       }
-      y += n*altezza; i += n;
+      y += tot; i += n;
       if (i < righe.length) nuovaPagina();
     }
     y += 8;
   }
+  const NOTA = [72,72,78];
   function riquadri(voci){
     const gap = 4, w = (W - 2*M - gap*(voci.length-1)) / voci.length, h = 21;
     serve(h + 8);
@@ -1509,34 +1514,36 @@ function creaPdf(modo, giorni, foto, sommPer){
     for (const [ora, lista] of Object.entries(gruppi)){
       serve(6 + 16);
       titoloSezione(ora, fascia(ora));
-      card(lista, 16, (x, ry) => {
-        miniatura(x.fid, x.f, M+4, ry+3.5, 9);
+      card(lista, x => x.f.note ? 20.5 : 16, (x, ry, hh) => {
+        miniatura(x.fid, x.f, M+4, ry + hh/2 - 4.5, 9);
         const xs = M+17, wTesto = W - M - 62 - xs;
         scrivi(x.f.nome, xs, ry+6.3, {size:11.5, bold:true, w:wTesto});
-        scrivi([x.f.dose, x.f.generico ? 'Generico: ' + x.f.generico : '', x.f.note].filter(Boolean).join('  ·  '), xs, ry+11, {size:8.8, color:C.sec, w:wTesto});
-        const [et, col] = ETICHETTA[x.st.stato];
-        icona(x.st.stato, W-M-8, ry+8, 2.9);
+        scrivi([x.f.dose, x.f.generico ? 'Generico: ' + x.f.generico : ''].filter(Boolean).join('  ·  '), xs, ry+11, {size:8.8, color:C.sec, w:wTesto});
+        if (x.f.note) scrivi('Nota: ' + x.f.note, xs, ry+15.6, {size:8.8, color:NOTA, w:wTesto});
+        const [et, col] = ETICHETTA[x.st.stato], cy = ry + hh/2;
+        icona(x.st.stato, W-M-8, cy, 2.9);
         if (x.st.ts){
-          scrivi(et, W-M-14, ry+6.3, {size:10, bold:true, color:col, align:'right'});
-          scrivi(`${x.st.chi ? x.st.chi + ', ' : ''}alle ${hhmm(x.st.ts)}`, W-M-14, ry+10.8, {size:8.5, color:C.sec, align:'right'});
-        } else scrivi(et, W-M-14, ry+8.2, {size:10, bold:true, color:col, align:'right'});
+          scrivi(et, W-M-14, cy-1.7, {size:10, bold:true, color:col, align:'right'});
+          scrivi(`${x.st.chi ? x.st.chi + ', ' : ''}alle ${hhmm(x.st.ts)}`, W-M-14, cy+2.8, {size:8.5, color:C.sec, align:'right'});
+        } else scrivi(et, W-M-14, cy+.2, {size:10, bold:true, color:col, align:'right'});
       }, 17);
     }
     // Al bisogno
     const bis = Object.entries(farmaci).filter(([,f]) => f.attivo!==false && f.frequenza==='bisogno').sort((a,b) => a[1].nome.localeCompare(b[1].nome));
     if (bis.length){
       titoloSezione('Al bisogno', 'solo quando serve');
-      card(bis, 16, ([fid,f], ry) => {
-        miniatura(fid, f, M+4, ry+3.5, 9);
+      card(bis, ([,f]) => f.note ? 20.5 : 16, ([fid,f], ry, hh) => {
+        miniatura(fid, f, M+4, ry + hh/2 - 4.5, 9);
         const xs = M+17, wTesto = W - M - 70 - xs;
         scrivi(f.nome, xs, ry+6.3, {size:11.5, bold:true, w:wTesto});
         scrivi([f.dose, f.maxGiorno ? `massimo ${f.maxGiorno} al giorno` : '', f.generico ? 'Generico: ' + f.generico : ''].filter(Boolean).join('  ·  '), xs, ry+11, {size:8.8, color:C.sec, w:wTesto});
-        const prese = Object.values(sommPer[g] || {}).filter(s => s.bisogno && s.fid===fid).sort((a,b) => a.ts-b.ts);
+        if (f.note) scrivi('Nota: ' + f.note, xs, ry+15.6, {size:8.8, color:NOTA, w:wTesto});
+        const prese = Object.values(sommPer[g] || {}).filter(s => s.bisogno && s.fid===fid).sort((a,b) => a.ts-b.ts), cy = ry + hh/2;
         if (prese.length){
-          icona('data', W-M-8, ry+8, 2.9);
-          scrivi(prese.length === 1 ? 'Presa 1 volta' : `Presa ${prese.length} volte`, W-M-14, ry+6.3, {size:10, bold:true, color:C.green, align:'right'});
-          scrivi(prese.map(s => s.ora + (s.chi && s.chi!=='—' ? ' ' + s.chi : '')).join(', '), W-M-14, ry+10.8, {size:8.5, color:C.sec, align:'right', w:60});
-        } else scrivi('Non presa', W-M-14, ry+8.2, {size:10, bold:true, color:C.ter, align:'right'});
+          icona('data', W-M-8, cy, 2.9);
+          scrivi(prese.length === 1 ? 'Presa 1 volta' : `Presa ${prese.length} volte`, W-M-14, cy-1.7, {size:10, bold:true, color:C.green, align:'right'});
+          scrivi(prese.map(s => s.ora + (s.chi && s.chi!=='—' ? ' ' + s.chi : '')).join(', '), W-M-14, cy+2.8, {size:8.5, color:C.sec, align:'right', w:60});
+        } else scrivi('Non presa', W-M-14, cy+.2, {size:10, bold:true, color:C.ter, align:'right'});
       }, 17);
     }
   } else {
@@ -1560,13 +1567,14 @@ function creaPdf(modo, giorni, foto, sommPer){
       titoloSezione('Farmaci a orario');
       testaGiorni();
       let ultimaOra = null;
-      card(lista, 14, (r, ry) => {
-        if (r.ora !== ultimaOra || ry < 40) scrivi(r.ora, M+4, ry+7, {size:10.5, bold:true});
+      card(lista, r => r.f.note ? 17.5 : 14, (r, ry, hh) => {
+        if (r.ora !== ultimaOra || ry < 40) scrivi(r.ora, M+4, ry+hh/2, {size:10.5, bold:true});
         ultimaOra = r.ora;
-        miniatura(r.fid, r.f, M+17, ry+3, 8);
+        miniatura(r.fid, r.f, M+17, ry + hh/2 - 4, 8);
         scrivi(r.f.nome, M+28, ry+5.6, {size:10.5, bold:true, w: sx-M-32});
         scrivi([r.f.dose, r.f.generico ? 'Gen.: ' + r.f.generico : ''].filter(Boolean).join('  ·  '), M+28, ry+10, {size:8, color:C.sec, w: sx-M-32});
-        giorni.forEach((g,i) => icona(r.giorni[g] ? r.giorni[g].stato : 'no', sx + cw*i + cw/2, ry+7, 2.5));
+        if (r.f.note) scrivi('Nota: ' + r.f.note, M+28, ry+14, {size:8, color:NOTA, w: sx-M-32});
+        giorni.forEach((g,i) => icona(r.giorni[g] ? r.giorni[g].stato : 'no', sx + cw*i + cw/2, ry + hh/2, 2.5));
       }, 17);
     } else titoloSezione('Nessun farmaco a orario in questa settimana');
 
@@ -1574,14 +1582,16 @@ function creaPdf(modo, giorni, foto, sommPer){
     if (bis.length){
       titoloSezione('Al bisogno', 'quante volte è stato preso');
       testaGiorni();
-      card(bis, 14, ([fid,f], ry) => {
-        miniatura(fid, f, M+4, ry+3, 8);
+      card(bis, ([,f]) => f.note ? 17.5 : 14, ([fid,f], ry, hh) => {
+        miniatura(fid, f, M+4, ry + hh/2 - 4, 8);
         scrivi(f.nome, M+15, ry+5.6, {size:10.5, bold:true, w: sx-M-19});
         scrivi([f.dose, f.maxGiorno ? `max ${f.maxGiorno} al giorno` : ''].filter(Boolean).join('  ·  '), M+15, ry+10, {size:8, color:C.sec, w: sx-M-19});
+        if (f.note) scrivi('Nota: ' + f.note, M+15, ry+14, {size:8, color:NOTA, w: sx-M-19});
+        const cy = ry + hh/2;
         giorni.forEach((g,i) => {
           const n = Object.values(sommPer[g] || {}).filter(s => s.bisogno && s.fid===fid).length, cx = sx + cw*i + cw/2;
-          if (n){ const sopra = f.maxGiorno && n > f.maxGiorno; riempi(sopra ? C.orange : C.green); doc.circle(cx, ry+7, 2.7, 'F'); scrivi(String(n), cx, ry+7.2, {size:9, bold:true, color:C.white, align:'center'}); }
-          else icona('no', cx, ry+7, 2.5);
+          if (n){ const sopra = f.maxGiorno && n > f.maxGiorno; riempi(sopra ? C.orange : C.green); doc.circle(cx, cy, 2.7, 'F'); scrivi(String(n), cx, cy+.2, {size:9, bold:true, color:C.white, align:'center'}); }
+          else icona('no', cx, cy, 2.5);
         });
       }, 4);
     }
@@ -1623,9 +1633,10 @@ function creaPdf(modo, giorni, foto, sommPer){
   }
 
   // --- Note del periodo ---
-  const not = Object.values(note).filter(n => giorni.includes(iso(new Date(n.ts)))).sort((a,b) => a.ts-b.ts);
+  const daNote = sposta(giorni[0], -7), aNote = giorni[giorni.length-1];
+  const not = Object.values(note).filter(n => { const g = iso(new Date(n.ts)); return g >= daNote && g <= aNote; }).sort((a,b) => b.ts-a.ts);
   if (not.length){
-    titoloSezione('Note');
+    titoloSezione('Note', sett ? 'della settimana e dei 7 giorni prima' : 'del giorno e dei 7 giorni prima');
     not.forEach(n => {
       font(10); const righe = doc.splitTextToSize(n.testo, W-2*M-10), h = 10 + righe.length*4.6;
       serve(h);
